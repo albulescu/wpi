@@ -21,6 +21,7 @@ type connection struct {
 	conn net.Conn
 	send chan string
 	token string
+	params map[string]string
 }
 
 func (c *connection) String() string {
@@ -40,8 +41,28 @@ func (c *connection) auth( token string) {
 	}
 }
 
+func (c *connection) set( data string ) {
+
+	if c.params == nil {
+		c.params = make(map[string]string);
+	}
+
+	part := strings.SplitN(data, " ", 2)
+
+	if len(part) != 2 {
+		c.error("INVALID_SET")
+		return
+	}
+
+	log.Println("SET ", data)
+
+	c.params[part[0]]=part[1]
+	c.conn.Write([]byte("OK\n"))
+}
+
 func (c *connection) error(message string) {
 	fmt.Println("Error:",message)
+	c.conn.Write([]byte("ERR:"))
 	c.conn.Write([]byte(message))
 	c.conn.Close()
 }
@@ -69,7 +90,7 @@ func (c *connection) readPump() {
 		 */
 		if importing != "" {
 
-			if strings.Index(string(message),"IMPORT") == 0 && contents.Len() == 0 {
+			if strings.Index(string(message), "IMPORT") == 0 && contents.Len() == 0 {
 				c.error("ERR:IMPORTING")
 				return
 			}
@@ -77,7 +98,7 @@ func (c *connection) readPump() {
 			if string(message) == "END\n" {
 
 				if contents.Len() == 0 {
-					c.error("ERR:ZEROFSIZE")
+					c.error("ZEROFSIZE")
 					return
 				}
 
@@ -107,16 +128,18 @@ func (c *connection) readPump() {
 		var param string
 
 		if len(request) == 2 {
-			param = strings.TrimRight(request[1],"\n")
+			param = strings.TrimRight(request[1], "\n")
 		}
 
 		if command != "AUTH" && c.token == "" {
-			c.error("ERR:NOAUTH")
+			c.error("NOAUTH")
 			return
 		}
 
 		if command == "AUTH" {
 			c.auth(param);
+		} else if command == "SET" {
+			c.set(param)
 		} else if command == "IMPORT" {
 
 			impinfo := strings.Split(param,"|");

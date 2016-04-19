@@ -19,10 +19,17 @@ class WPI
 
     private $metaFile;
 
+    private $sock;
+
     public function __construct( $server, $path )
     {
         $this->server = $server;
-        $this->path = $path;
+        $this->path = realpath($path);
+
+        if( false === $this->path ) {
+            throw new RuntimeException("Path is invalid");
+        }
+
         $this->metaFile = $this->path . DIRECTORY_SEPARATOR . "wpide.imp";
         ob_implicit_flush();
         set_time_limit(0);
@@ -33,6 +40,52 @@ class WPI
      */
     public function setToken($token) {
         $this->token = $token;
+    }
+
+    /**
+     * @return boolean
+     * @throws
+     */
+    public function start( $progress )
+    {
+        $this->connect();
+
+        $sent       = 0;
+        $imported   = 0;
+        $meta       = $this->prepare();
+        $total      = count($meta['files']);
+
+        foreach ($meta['info'] as $name => $value) {
+            $this->write("SET " . $name . " " . $value);
+        }
+
+        foreach($meta['files'] as $index => $file) {
+
+            if( $file['state'] === 0 ) {
+
+                $sent++;
+
+                if($this->import($file)){
+                    $meta['files'][$index]['state'] = 1;
+                    $this->saveMeta($meta);
+                    $imported++;
+                }
+
+                if( $progress ) {
+                    call_user_func_array(
+                        $progress,
+                        array(
+                            $file['path'],
+                            round($sent / $total * 100)
+                        )
+                    );
+                }
+            }
+        }
+
+        fclose($this->sock);
+
+        return $imported === $sent;
     }
 
     /**
@@ -73,34 +126,17 @@ class WPI
         return $nodes;
     }
 
-    /**
-     * Prepare file to be passed to the socket
-     * @param $force
-     * @return array
-     */
-    private function prepare( $force = false ) {
+    private function prepare() {
 
         if(!file_exists($this->path) || !is_dir($this->path)) {
             throw new UnexpectedValueException("Invalid path provided: " . $this->path);
         }
 
-        if( $force === false  && file_exists($this->metaFile)) {
-
-            $meta = json_decode(file_get_contents($this->metaFile), true);
-
-            if( $meta === null ) {
-                unlink($this->metaFile);
-                throw new UnexpectedValueException("Meta should not be null. The wpi file removed, please try again!");
-            }
-
-            return $meta;
-        }
-
-        if(!file_exists($this->path . DIRECTORY_SEPARATOR . "wp-load.php")) {
-            throw new RuntimeException("Invalid WordPress path, wp-load.php missing");
-        }
-
         require $this->path . DIRECTORY_SEPARATOR . "wp-load.php";
+
+        global $wpdb;
+
+        $this->dumpSQL($wpdb);
 
         $meta = array();
 
@@ -136,75 +172,121 @@ class WPI
         }
     }
 
-    /**
-     * @param bool $force Force building metadata
-     * @return boolean
-     * @throws WPIException
-     */
-    public function start( $force = false )
-    {
-        $start = microtime(true);
+    private function connect() {
 
-        $meta = $this->prepare($force);
+        $this->sock = @stream_socket_client("tcp://" . $this->server, $errorNumber, $errorMessage);
 
-        $client = @stream_socket_client("tcp://" . $this->server, $errorNumber, $errorMessage);
-
-        if ($client === false) {
+        if ($this->sock === false) {
             throw new UnexpectedValueException("Failed to connect: $errorMessage");
         }
 
-        fwrite($client, "AUTH " . $this->token . self::EOP);
+        fwrite($this->sock, "AUTH " . $this->token . self::EOP);
 
-        if( stream_get_contents($client,1) === "0" ) {
+        if( stream_get_contents($this->sock,1) === "0" ) {
             throw new WPIException("Authentication failed");
         }
 
-        $sent = 0;
-        $imported = 0;
+    }
 
-        foreach($meta['files'] as $index => $file) {
-            if( $file['state'] === 0 ) {
+    /**
+     * @param $file
+     * @return array
+     * @throws Error
+     * @throws WPIException
+     */
+    private function import( $file )
+    {
+        $relative = str_replace($this->path . '/', '', $file['path']);
 
-                echo "Import {$file['path']}\n";
-
-                $relative = str_replace($this->path . '/', '', $file['path']);
-
-                fwrite($client, "IMPORT " . $relative . "|" . filesize($file['path']) . self::EOP);
-
-                if( stream_get_contents($client, 1) === "0" ) {
-                    // file already imported
-                    continue;
-                }
-
-                if(!file_exists($file['path'])) {
-                    unlink($this->path . DIRECTORY_SEPARATOR . "wpi");
-                    throw new WPIException("Meta may be corrupted file to import missing.");
-                }
-
-                $sent++;
-
-                $handle = fopen($file['path'], "r");
-                $contents = fread($handle, filesize($file['path']));
-
-                fwrite($client, $contents);
-                fwrite($client, "END" . self::EOP);
-
-                if( stream_get_contents($client,1) === "1" ) {
-                    $meta['files'][$index]['state'] = 1;
-                    $this->saveMeta($meta);
-                    $imported++;
-                } else {
-                    throw new Error("Fail to import file");
-                }
-            }
+        $this->write("IMPORT " . $relative . "|" . filesize($file['path']));
+        
+        if (stream_get_contents($this->sock, 1) === "0") {
+            return false;
         }
 
-        fclose($client);
+        if (!file_exists($file['path'])) {
+            unlink($this->path . DIRECTORY_SEPARATOR . "wpi");
+            throw new WPIException("Meta may be corrupted, file to import missing.");
+        }
 
-        $time_elapsed_secs = microtime(true) - $start;
+        $handle = fopen($file['path'], "r");
+        $contents = fread($handle, filesize($file['path']));
 
-        die("Imported $imported files from $sent in ". $time_elapsed_secs . "\n");
+        $this->write($contents,false);
+        $this->write("END");
+        
+        if (stream_get_contents($this->sock, 1) != "1") {
+            return false;
+        }
 
-        return $imported === $sent;
+        return true;
+    }
+
+    /**
+     * @param $data
+     * @param bool $eol
+     */
+    private function write( $data, $eol = true ) {
+
+        if( $eol ) {
+            $data = $data . self::EOP;
+        }
+
+        fwrite($this->sock, $data);
+    }
+
+    /**
+     * @param $wpdb
+     * @throws WPIException
+     */
+    private function dumpSQL($wpdb)
+    {
+        $sqlFile = $this->path . DIRECTORY_SEPARATOR . "db.sql";
+
+        if (file_exists($sqlFile)) {
+            unlink($sqlFile);
+        }
+
+        $tables = $wpdb->get_results('show tables', ARRAY_N);
+
+        $fp = fopen($sqlFile, "a");
+
+        if ($fp === false) {
+            throw new WPIException("Fail to write database sql file");
+        }
+
+        $header = "-- DATABASE DUMP " . date('r') . "\n";
+
+        fwrite($fp, $header, strlen($header));
+
+        foreach ($tables as $table) {
+
+            $sql = "";
+
+            foreach ($wpdb->get_results('show create table ' . $table[0], ARRAY_N) as $create) {
+                $sql = $sql . "-- " . $create[0] . "\n\n" . $create[1] . ";\n\n\n";
+            }
+
+            fwrite($fp, $sql, strlen($sql));
+
+
+            $data = $wpdb->get_results("SELECT * FROM " . $table[0], ARRAY_A);
+
+            $sql = "";
+            foreach ($data as $row) {
+                $sql .= "INSERT INTO `" . $table[0] . "` SET ";
+                $parts = array();
+                foreach ($row as $field => $value) {
+                    $parts[] = "`" . $field . "` = '" . esc_sql($value) . "'";
+                }
+                $sql .= implode($parts, ', ') . ";\n";
+            }
+
+            $sql .= "\n\n\n";
+
+            fwrite($fp, $sql, strlen($sql));
+        }
+
+        fclose($fp);
     }
 }
