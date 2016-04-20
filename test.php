@@ -5,7 +5,7 @@ error_reporting(E_ALL);
 
 require "wpi.php";
 
-$wpi = new WPI("localhost:9999", "/var/www/wp");
+$wpi = new WPI("144.76.87.164:9999", "/var/www/wp");
 $wpi->setToken("abc");
 
 $start = microtime(true);

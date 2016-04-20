@@ -7,7 +7,7 @@ test:
 	go test *.go
 
 run:
-	env DEBUG=1 go run *.go
+	env DEBUG=1 go run *.go --config=config.sample.ini
 
 build:
 	go build -o ./wptree *.go;

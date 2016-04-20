@@ -1,44 +1,86 @@
 package main
 
 import (
-	"net"
-	"strconv"
+	"flag"
 	"fmt"
+	"gopkg.in/ini.v1"
+	"net"
+	"path/filepath"
+	"strconv"
 )
 
-var verbose bool = false;
+var verbose bool = false
 
-var MAX_INDEX_WORKERS int = 200
+var MAX_INDEX_WORKERS int = 100
 
 var writeFiles chan WriteJob
 
 var writeComplete chan *connection
 
-var counters map[*connection]int;
+var counters map[*connection]int
+
+type Configuration struct {
+	BindAddress  string `ini:"bind"`
+	Temp         string `ini:"temp"`
+	Workers      int    `ini:"workers"`
+	TempLifetime string `ini:"lifetime"`
+	Mounts       string `ini:"mounts"`
+}
+
+var config *Configuration = &Configuration{}
 
 func main() {
 
-	ln, err := net.Listen("tcp", ":9999")
+	var configFileFlag = flag.String("config", "", "Config file")
+
+	flag.Parse()
+
+	configFile, err := filepath.Abs(*configFileFlag)
+
+	if err != nil {
+		panic("Fail to get absolute file path for ini")
+	}
+
+	ini, err := ini.Load(configFile)
+
+	if err != nil {
+		panic("Fail to load ini file")
+	}
+
+	ini.MapTo(config)
+
+	fmt.Println("Starting on", config.BindAddress)
+
+	ln, err := net.Listen("tcp", config.BindAddress)
 
 	if err != nil {
 		panic(err)
 	}
 
-	counters = make(map[*connection]int);
+	counters = make(map[*connection]int)
 
 	writeComplete = make(chan *connection)
 	writeFiles = make(chan WriteJob, 100)
-	dispatcher := NewDispatcher(writeFiles, MAX_INDEX_WORKERS)
+
+	workersNum := MAX_INDEX_WORKERS
+
+	if config.Workers != 0 {
+		workersNum = config.Workers
+	}
+
+	fmt.Println("Start with", workersNum, "workers")
+
+	dispatcher := NewDispatcher(writeFiles, workersNum)
 	go dispatcher.Run()
 
 	go h.run()
 
-	go (func(){
+	go (func() {
 		for {
 			select {
 			case c := <-writeComplete:
 				{
-					counters[c]++;
+					counters[c]++
 
 					totalStr, err := c.get("files")
 
@@ -46,7 +88,7 @@ func main() {
 						panic(err)
 					}
 
-					total, err := strconv.Atoi(totalStr);
+					total, err := strconv.Atoi(totalStr)
 
 					if err != nil {
 						panic(err)
@@ -61,7 +103,7 @@ func main() {
 				}
 			}
 		}
-	})();
+	})()
 
 	for {
 		con, err := ln.Accept()
@@ -72,7 +114,7 @@ func main() {
 
 		c := &connection{conn: con, send: make(chan string)}
 
-		counters[c]=0;
+		counters[c] = 0
 
 		go c.readPump()
 		c.writePump()
