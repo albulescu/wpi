@@ -57,6 +57,15 @@ class WPI
 
         foreach ($meta['info'] as $name => $value) {
             $this->write("SET " . $name . " " . $value);
+            if(!$this->isOK()) {
+                throw new WPIException("Fail to set ".$name." property");
+            }
+        }
+
+        $this->write("SET files " . count($meta['files']));
+
+        if(!$this->isOK()) {
+            throw new WPIException("Fail to set number of files");
         }
 
         foreach($meta['files'] as $index => $file) {
@@ -85,8 +94,10 @@ class WPI
 
         $this->write("FINISH");
 
-        if ( !$this->isOK() ) {
-            throw new RuntimeException("Fail to finish");
+        $response = stream_get_contents($this->sock, 7);
+
+        if( $response !== "FINISH\n" ) {
+            throw new WPIException("Fail to finish");
         }
 
         fclose($this->sock);
