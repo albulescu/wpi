@@ -23,8 +23,8 @@ function notify($event, $data = null) {
 try {
     $wpi->start(function ($info, $progress) {
         notify("progress", array(
-            'info' => $info,
-            'progress' => $progress
+            'progress' => $progress,
+            'info' => $info
         ));
     });
     notify("complete");

@@ -190,6 +190,11 @@ func (c *connection) writePump() {
 				log.Println("Fail to send data:",message)
 				return
 			}
+
+			if message == "FINISH" {
+				h.unregister <- c
+				return
+			}
 		}
 	}
 }
