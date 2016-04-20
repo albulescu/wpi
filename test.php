@@ -16,18 +16,24 @@ function notify($event, $data = null) {
         echo "data: " . json_encode($data) . PHP_EOL;
     }
     echo PHP_EOL;
-    ob_flush();
-    flush();
+    @ob_flush();
+    @flush();
 }
 
-$wpi->start(function($info, $progress){
-    notify("progress", array(
-        'info'      => $info,
-        'progress'  => $progress
-    ));
-});
+try {
+    $wpi->start(function ($info, $progress) {
+        notify("progress", array(
+            'info' => $info,
+            'progress' => $progress
+        ));
+    });
+    notify("complete");
+}
+catch(Exception $e) {
+    notify("error", $e->getMessage());
+}
 
-notify("complete");
+
 
 $time_elapsed_secs = microtime(true) - $start;
 

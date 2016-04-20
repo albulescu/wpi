@@ -1,50 +1,50 @@
 package main
 
 import (
-	"fmt"
 	"bufio"
-	"net"
-	"log"
-	"strings"
 	"bytes"
+	"fmt"
+	"log"
+	"net"
 	"strconv"
+	"strings"
 )
-
 
 type hub struct {
 	connections map[*connection]bool
-	register chan *connection
-	unregister chan *connection
+	register    chan *connection
+	unregister  chan *connection
 }
 
 type connection struct {
-	conn net.Conn
-	send chan string
-	token string
+	conn   net.Conn
+	send   chan string
+	token  string
 	params map[string]string
 }
 
 func (c *connection) String() string {
-	return c.conn.RemoteAddr().String();
+	return c.conn.RemoteAddr().String()
 }
 
-func (c *connection) auth( token string) {
+func (c *connection) auth(token string) {
 	fmt.Println("Auth with:", token)
 	if token == "abc" {
 		c.token = token
 		fmt.Println("Auth OK")
-		c.conn.Write([]byte("1\n"))
+		c.send <- "OK"
+		h.register <- c
 	} else {
 		fmt.Println("Auth FAIL")
-		c.conn.Write([]byte("0\n"))
+		c.send <- "FAIL"
 		c.conn.Close()
 	}
 }
 
-func (c *connection) set( data string ) {
+func (c *connection) set(data string) {
 
 	if c.params == nil {
-		c.params = make(map[string]string);
+		c.params = make(map[string]string)
 	}
 
 	part := strings.SplitN(data, " ", 2)
@@ -56,14 +56,13 @@ func (c *connection) set( data string ) {
 
 	log.Println("SET ", data)
 
-	c.params[part[0]]=part[1]
-	c.conn.Write([]byte("OK\n"))
+	c.params[part[0]] = part[1]
+	c.send <- "OK"
 }
 
 func (c *connection) error(message string) {
-	fmt.Println("Error:",message)
-	c.conn.Write([]byte("ERR:"))
-	c.conn.Write([]byte(message))
+	fmt.Println("Error:", message)
+	c.send <- message
 	c.conn.Close()
 }
 
@@ -76,18 +75,23 @@ func (c *connection) readPump() {
 
 	reader := bufio.NewReader(c.conn)
 
-	var importing string;
-	var size int;
-	var contents bytes.Buffer;
+	var importing string
+	var size int
+	var contents bytes.Buffer
 
 	for {
 
 		message, err := reader.ReadBytes('\n')
 
+		if err != nil {
+			fmt.Println(err.Error())
+			break
+		}
+
 		/**
-		 If we are in importing state write to
-		 buffer until END command received
-		 */
+		If we are in importing state write to
+		buffer until END command received
+		*/
 		if importing != "" {
 
 			if strings.Index(string(message), "IMPORT") == 0 && contents.Len() == 0 {
@@ -102,33 +106,38 @@ func (c *connection) readPump() {
 					return
 				}
 
-				fmt.Println("Import comlete:", importing, "with size", contents.Len())
-				c.conn.Write([]byte("1\n"))
+				contents.Truncate(size)
+
+				percent := contents.Len()/size*100
+
+				fmt.Print(" - ",percent)
+				fmt.Print("%")
+				if contents.Len() != size {
+					fmt.Print(" ( ! )")
+				}
+				fmt.Print("\n")
+
+				c.send <- "OK"
+
 				importing = ""
-				contents.Reset();
+				contents.Reset()
 				continue
 			}
 
 			contents.Write(message)
 
-			continue;
+			continue
 		}
 
-		if err != nil {
-			break
-		}
-
-		request := strings.SplitN(string(message), " ", 2)
-
-		if len(request) == 0 {
-			break
-		}
-
-		var command string = request[0];
+		var command string = strings.TrimRight(string(message), "\n")
 		var param string
 
-		if len(request) == 2 {
-			param = strings.TrimRight(request[1], "\n")
+		if strings.Index(string(message), " ") != -1 {
+			request := strings.SplitN(string(message), " ", 2)
+			command = request[0]
+			if len(request) == 2 {
+				param = strings.TrimRight(request[1], "\n")
+			}
 		}
 
 		if command != "AUTH" && c.token == "" {
@@ -137,26 +146,23 @@ func (c *connection) readPump() {
 		}
 
 		if command == "AUTH" {
-			c.auth(param);
+			c.auth(param)
 		} else if command == "SET" {
 			c.set(param)
+		} else if command == "FINISH" {
+			log.Println("Finish Import")
+			c.conn.Write([]byte("OK"))
+			return
 		} else if command == "IMPORT" {
-
-			impinfo := strings.Split(param,"|");
-
-			importing=impinfo[0];
-			size,_=strconv.Atoi(impinfo[1]);
-
-			c.conn.Write([]byte("1\n"))
-			fmt.Println("Start import", importing, "with size", size)
+			impinfo := strings.Split(param, "|")
+			importing = impinfo[0]
+			size, _ = strconv.Atoi(impinfo[1])
+			fmt.Print("> ",importing)
+			c.send <- "OK"
 		} else {
-			fmt.Println("Unknown command", request[0]);
+			fmt.Println("Unknown command", command)
 		}
 	}
-}
-
-func (c *connection) write(payload []byte) error {
-	return nil
 }
 
 func (c *connection) writePump() {
@@ -172,13 +178,12 @@ func (c *connection) writePump() {
 			}
 
 			if _, err := c.conn.Write([]byte(message + "\n")); err != nil {
-				log.Println("Fail to send data")
+				log.Println("Fail to send data:",message)
 				return
 			}
 		}
 	}
 }
-
 
 var h = hub{
 	register:    make(chan *connection),
@@ -191,9 +196,9 @@ func (h *hub) run() {
 		select {
 		case c := <-h.register:
 			h.connections[c] = true
-			//log.Println("Register user:", c.String())
+			log.Println("Register user:", c.String())
 		case c := <-h.unregister:
-			//log.Println("Unregister user:", c.String())
+			log.Println("Unregister user:", c.String())
 			if _, ok := h.connections[c]; ok {
 				delete(h.connections, c)
 				close(c.send)
@@ -219,9 +224,7 @@ func main() {
 			panic(err)
 		}
 
-		c := &connection{conn:con, send: make(chan string)}
-
-		h.register <- c
+		c := &connection{conn: con, send: make(chan string)}
 
 		go c.writePump()
 		c.readPump()

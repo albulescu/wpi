@@ -83,9 +83,43 @@ class WPI
             }
         }
 
+        $this->write("FINISH");
+
+        if ( !$this->isOK() ) {
+            throw new RuntimeException("Fail to finish");
+        }
+
         fclose($this->sock);
 
         return $imported === $sent;
+    }
+
+    private function connect() {
+
+        $this->sock = @stream_socket_client("tcp://" . $this->server, $errorNumber, $errorMessage);
+
+        if ($this->sock === false) {
+            throw new UnexpectedValueException("Failed to connect: $errorMessage");
+        }
+
+        $this->write("AUTH " . $this->token);
+
+        if( !$this->isOK() ) {
+            throw new WPIException("Authentication failed");
+        }
+
+    }
+
+    private function write( $data, $eol = true ) {
+        if( $eol ) {
+            $data = $data . self::EOP;
+        }
+        fwrite($this->sock, $data, strlen($data));
+    }
+
+    private function isOK() {
+        $string = stream_get_contents($this->sock, 3);
+        return $string === "OK\n";
     }
 
     /**
@@ -172,22 +206,6 @@ class WPI
         }
     }
 
-    private function connect() {
-
-        $this->sock = @stream_socket_client("tcp://" . $this->server, $errorNumber, $errorMessage);
-
-        if ($this->sock === false) {
-            throw new UnexpectedValueException("Failed to connect: $errorMessage");
-        }
-
-        fwrite($this->sock, "AUTH " . $this->token . self::EOP);
-
-        if( stream_get_contents($this->sock,1) === "0" ) {
-            throw new WPIException("Authentication failed");
-        }
-
-    }
-
     /**
      * @param $file
      * @return array
@@ -199,8 +217,8 @@ class WPI
         $relative = str_replace($this->path . '/', '', $file['path']);
 
         $this->write("IMPORT " . $relative . "|" . filesize($file['path']));
-        
-        if (stream_get_contents($this->sock, 1) === "0") {
+
+        if ( !$this->isOK() ) {
             return false;
         }
 
@@ -212,27 +230,10 @@ class WPI
         $handle = fopen($file['path'], "r");
         $contents = fread($handle, filesize($file['path']));
 
-        $this->write($contents,false);
+        $this->write($contents);
         $this->write("END");
-        
-        if (stream_get_contents($this->sock, 1) != "1") {
-            return false;
-        }
 
-        return true;
-    }
-
-    /**
-     * @param $data
-     * @param bool $eol
-     */
-    private function write( $data, $eol = true ) {
-
-        if( $eol ) {
-            $data = $data . self::EOP;
-        }
-
-        fwrite($this->sock, $data);
+        return $this->isOK();
     }
 
     /**
