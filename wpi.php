@@ -227,15 +227,15 @@ class WPI
     {
         $relative = str_replace($this->path . '/', '', $file['path']);
 
+        if (!file_exists($file['path'])) {
+            unlink($this->path . DIRECTORY_SEPARATOR . "wpi");
+            throw new WPIException("Meta may be corrupted, file to import missing.");
+        }
+
         $this->write("IMPORT " . $relative . "|" . filesize($file['path']));
 
         if ( !$this->isOK() ) {
             return false;
-        }
-
-        if (!file_exists($file['path'])) {
-            unlink($this->path . DIRECTORY_SEPARATOR . "wpi");
-            throw new WPIException("Meta may be corrupted, file to import missing.");
         }
 
         $handle = fopen($file['path'], "r");
