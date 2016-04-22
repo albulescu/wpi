@@ -10,6 +10,6 @@ $wpi->setToken("abc");
 $wpi->setVerbose(true);
 $start = microtime(true);
 $wpi->connect();
-$wpi->start();
+$output = $wpi->start();
 $time_elapsed_secs = microtime(true) - $start;
 die("Imported in ". $time_elapsed_secs . "\n");

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"gopkg.in/ini.v1"
+	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -12,8 +13,10 @@ import (
 )
 
 var VERSION string = "0.0.0"
+
 var DEBUG bool = false
-var verbose bool = true
+
+var verbose bool
 
 var MAX_INDEX_WORKERS int = 100
 
@@ -46,6 +49,8 @@ func main() {
 	}
 
 	var configFileFlag = flag.String("config", "/etc/wpi.conf", "Config file")
+
+	verbose = *flag.Bool("verbose", false, "--verbose")
 
 	flag.Parse()
 
@@ -80,7 +85,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println("Starting on", config.BindAddress)
+	log.Println("Version is ", VERSION)
+	log.Println("Verbose is ", verbose)
+	log.Println("Starting on", config.BindAddress)
 
 	ln, err := net.Listen("tcp", config.BindAddress)
 
@@ -95,11 +102,10 @@ func main() {
 
 	// define number of workers
 	workersNum := MAX_INDEX_WORKERS
+
 	if config.Workers != 0 {
 		workersNum = config.Workers
 	}
-
-	fmt.Println("Start with", workersNum, "workers")
 
 	// start workers for writing files
 	dispatcher := NewDispatcher(writeFiles, workersNum)
@@ -128,7 +134,7 @@ func main() {
 			counters[c] = 0
 
 			go c.readPump()
-			c.writePump()
+			go c.writePump()
 		}
 	})()
 

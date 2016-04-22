@@ -89,7 +89,7 @@ class WPI
                     call_user_func_array(
                         $progress,
                         array(
-                            $file['path'],
+                            str_replace($this->path . '/', '', $file['path']),
                             round($sent / $total * 100)
                         )
                     );
@@ -99,15 +99,16 @@ class WPI
 
         $this->write("FINISH");
 
-        $response = stream_get_contents($this->sock, 7);
-
-        if( $response !== "FINISH\n" ) {
-            throw new WPIException("Fail to finish");
-        }
-
+        $response = stream_get_contents($this->sock);
         fclose($this->sock);
 
-        return $imported === $sent;
+        $json = json_decode($response,true);
+
+        if( $json === false ) {
+            throw new WPIException("Finish response must be a json. This means that is not successful. The actual response is " . $response);
+        }
+
+        return $response;
     }
 
     /**

@@ -28,7 +28,9 @@ func (c *connection) String() string {
 }
 
 func (c *connection) auth(token string) bool {
+
 	fmt.Println("Auth with:", token)
+
 	if token == "abc" {
 		c.token = token
 		fmt.Println("Auth OK")
@@ -76,28 +78,25 @@ func (c *connection) get(name string) (string, error) {
 
 func (c *connection) error(message string) {
 	fmt.Println("Error:", message)
-	c.send <- message
+	c.conn.Write([]byte(message))
+	c.conn.Write([]byte("\n"))
 	c.conn.Close()
 }
 
 func (c *connection) readPump() {
 
-	reader := bufio.NewReaderSize(c.conn, 1024)
+	var cImportFile string
+	var cImportSize int
+	var cImportCRC string
+	var cFileBuffer bytes.Buffer
 
-	var importing string
-	var size int
-	var crc string
-
-	var contents bytes.Buffer
+	reader := bufio.NewReaderSize(c.conn, CHUNK_SIZE)
 
 	for {
-		/**
-		If we are in importing state write to
-		buffer until END command received
-		*/
-		if importing != "" {
 
-			var chunk []byte = make([]byte, 1024)
+		if cImportFile != "" {
+
+			var chunk []byte = make([]byte, CHUNK_SIZE)
 
 			n, err := reader.Read(chunk)
 
@@ -113,7 +112,7 @@ func (c *connection) readPump() {
 				continue
 			}
 
-			cntWriteNum, cntWriteErr := contents.Write(chunk[:n])
+			cntWriteNum, cntWriteErr := cFileBuffer.Write(chunk[:n])
 
 			if cntWriteErr != nil {
 				panic(cntWriteErr)
@@ -123,32 +122,32 @@ func (c *connection) readPump() {
 				panic(fmt.Sprint("Trying to write ", n, "but only ", cntWriteNum, "was written"))
 			}
 
-			if size == contents.Len() {
+			if cImportSize == cFileBuffer.Len() {
 
-				importedCrc := md5.Sum(contents.Bytes())
+				importedCrc := md5.Sum(cFileBuffer.Bytes())
 
-				if fmt.Sprintf("%x", importedCrc) != crc {
+				if fmt.Sprintf("%x", importedCrc) != cImportCRC {
 					c.send <- "1"
 					break
 				}
 
-				writeFiles <- WriteJob{c: c, file: importing, buffer: contents}
+				writeFiles <- WriteJob{c: c, file: cImportFile, buffer: cFileBuffer}
 
 				if verbose {
 
-					if contents.Len() != size {
+					if cFileBuffer.Len() != cImportSize {
 						fmt.Print("Failed:")
 					} else {
 						fmt.Print("Success:")
 					}
 
-					fmt.Print(importing)
+					fmt.Print(cImportFile)
 
 					fmt.Print("\n")
 				}
 
-				importing = ""
-				contents.Reset()
+				cImportFile = ""
+				cFileBuffer.Reset()
 				c.send <- OK
 				continue
 			}
@@ -186,19 +185,21 @@ func (c *connection) readPump() {
 		} else if command == "SET" {
 			c.set(param)
 		} else if command == "FINISH" {
+			c.conn.Write([]byte("{\"url\":\"http://wpide.net\"}"))
+			c.conn.Close()
 			return
 		} else if command == "IMPORT" {
 
 			impinfo := strings.Split(param, "|")
 
-			importing = impinfo[0]
-			size, _ = strconv.Atoi(impinfo[1])
-			crc = impinfo[2]
+			cImportFile = impinfo[0]
+			cImportSize, _ = strconv.Atoi(impinfo[1])
+			cImportCRC = impinfo[2]
 
-			contents.Reset()
+			cFileBuffer.Reset()
 
 			if verbose {
-				fmt.Println("Import:", importing, "  Size:", size, "  Crc:", crc)
+				fmt.Println("Import:", cImportFile, "  Size:", cImportSize, "  Crc:", cImportCRC)
 			}
 
 			c.send <- OK
@@ -209,9 +210,12 @@ func (c *connection) readPump() {
 }
 
 func (c *connection) writePump() {
+
 	defer func() {
+		fmt.Println("Defered closing write pump")
 		c.conn.Close()
 	}()
+
 	for {
 		select {
 		case message, ok := <-c.send:
