@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/url"
@@ -21,6 +22,16 @@ func exists(path string) (bool, error) {
 		return false, nil
 	}
 	return true, err
+}
+
+func completeJson(url string) []byte {
+	data := make(map[string]string, 0)
+	data["url"] = url
+	json, err := json.Marshal(data)
+	if err != nil {
+		panic(err)
+	}
+	return json
 }
 
 func createEmptyFile(name string) error {

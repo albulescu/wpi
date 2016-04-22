@@ -188,7 +188,7 @@ func (c *connection) readPump() {
 			if verbose {
 				fmt.Println("Finished importing files")
 			}
-			c.conn.Write([]byte("{\"url\":\"http://wpide.net\"}"))
+			c.conn.Write(completeJson("http://wpide.net"))
 			c.conn.Close()
 			return
 		} else if command == "IMPORT" {
