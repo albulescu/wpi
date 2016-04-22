@@ -36,7 +36,7 @@ func (c *connection) auth(token string) {
 		h.register <- c
 	} else {
 		fmt.Println("Auth FAIL")
-		c.send <- "1"
+		c.conn.Write([]byte("1\n"))
 		c.conn.Close()
 	}
 }
