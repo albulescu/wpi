@@ -13,4 +13,4 @@ build:
 	go build -o ./wptree *.go;
 
 release:
-	/bin/bash -x release.sh $(BINPATH) $(GOPATH)
+	/bin/bash -x release.sh $(BINPATH)

@@ -1,0 +1,13 @@
+before_script:
+    - export PATH=$PATH:/usr/local/go/bin
+    - go version
+    - make install
+
+deploy-ams8:
+  stage: deploy
+  tags:
+    - AMS8
+  script:
+    - make release
+  only:
+    - tags

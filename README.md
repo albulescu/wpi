@@ -6,7 +6,8 @@
 # Authenticate 
 
 > AUTH generated_token_from_ide\n
-< OK\n
+< 0\n # auth ok
+< 1\n # auth failed
 
 # Set properties ( bellow properties are requred )
 

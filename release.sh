@@ -3,6 +3,7 @@
 set +x
 
 BINPATH=$1
+APPNAME="wpi"
 
 if [ ! -d "$BINPATH" ]; then
     echo "Directory for deploying $BINPATH does not exist"
@@ -11,8 +12,8 @@ fi
 
 VERSION=$(/usr/bin/git describe --abbrev=0 --tags | cut -d'v' -f 2)
 
-if [ -f "$BINPATH/wpi" ]; then
-    LATEST=$($BINPATH/wpi --version)
+if [ -f "$BINPATH/$APPNAME" ]; then
+    LATEST=$($BINPATH/$APPNAME --version)
 else
     LATEST="0.0.0"
 fi
@@ -21,13 +22,13 @@ if [ -n "$VERSION" ] && [ "$VERSION" != "$LATEST" ]; then
 
     git checkout "$VERSION"
 
-    go build -ldflags "-X main.VERSION=`echo $VERSION`" -o ./wpi *.go
+    go build -ldflags "-X main.VERSION=`echo $VERSION`" -o "./$APPNAME" *.go
 
-    sudo cp ./wpi $BINPATH
+    sudo cp "./$APPNAME" $BINPATH
 
-    echo "Release version $(./wpi --version)"
+    echo "Release version $(./$APPNAME --version)"
 
-    rm -rf ./wpi
+    rm -rf "./$APPNAME"
 else
     echo "No new releases. Latest version is $LATEST"
 fi

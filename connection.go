@@ -3,13 +3,17 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"strconv"
 	"strings"
-	"errors"
+	"crypto/md5"
 )
+
+var OK string = "0"
+var CHUNK_SIZE = 1024
 
 type connection struct {
 	conn   net.Conn
@@ -27,11 +31,11 @@ func (c *connection) auth(token string) {
 	if token == "abc" {
 		c.token = token
 		fmt.Println("Auth OK")
-		c.send <- "OK"
+		c.send <- "0"
 		h.register <- c
 	} else {
 		fmt.Println("Auth FAIL")
-		c.send <- "FAIL"
+		c.send <- "1"
 		c.conn.Close()
 	}
 }
@@ -52,10 +56,11 @@ func (c *connection) set(data string) {
 	log.Println("SET ", data)
 
 	c.params[part[0]] = part[1]
-	c.send <- "OK"
+
+	c.send <- OK
 }
 
-func (c *connection) get(name string) (string,error) {
+func (c *connection) get(name string) (string, error) {
 	if c.params == nil {
 		c.params = make(map[string]string)
 	}
@@ -74,42 +79,53 @@ func (c *connection) error(message string) {
 
 func (c *connection) readPump() {
 
-	reader := bufio.NewReader(c.conn)
+	reader := bufio.NewReaderSize(c.conn, 1024)
 
 	var importing string
 	var size int
+	var crc string
+
 	var contents bytes.Buffer
 
 	for {
-
-		message, err := reader.ReadBytes('\n')
-
-		if err != nil {
-			fmt.Println(err.Error())
-			break
-		}
-
 		/**
 		If we are in importing state write to
 		buffer until END command received
 		*/
 		if importing != "" {
 
-			if strings.Index(string(message), "IMPORT") == 0 && contents.Len() == 0 {
-				c.error("ERR:IMPORTING")
-				return
+			var chunk []byte = make([]byte,1024);
+
+			n, err := reader.Read(chunk)
+
+			if err != nil {
+				panic(err);
 			}
 
-			if string(message) == "END\n" {
+			if n == 0 {
+				continue
+			}
 
-				if contents.Len() == 0 {
-					c.error("ZEROFSIZE")
-					return
+			cntWriteNum, cntWriteErr := contents.Write(chunk[:n])
+
+			if cntWriteErr!=nil {
+				panic(cntWriteErr)
+			}
+
+			if cntWriteNum != n {
+				panic(fmt.Sprint("Trying to write ", n, "but only ", cntWriteNum, "was written"))
+			}
+
+			if size == contents.Len() {
+
+				importedCrc := md5.Sum(contents.Bytes())
+
+				if fmt.Sprintf("%x", importedCrc) != crc {
+					c.send <- "1"
+					break;
 				}
 
-				contents.Truncate(size)
-
-				writeFiles <- WriteJob{c:c, file:importing, buffer:contents}
+				writeFiles <- WriteJob{c: c, file: importing, buffer: contents}
 
 				if verbose {
 
@@ -124,16 +140,20 @@ func (c *connection) readPump() {
 					fmt.Print("\n")
 				}
 
-				c.send <- "OK"
-
 				importing = ""
 				contents.Reset()
+				c.send <- OK
 				continue
 			}
 
-			contents.Write(message)
+			continue //Stay in file reading
+		}
 
-			continue
+		message, err := reader.ReadBytes('\n')
+
+		if err != nil {
+			fmt.Println(err.Error())
+			break
 		}
 
 		var command string = strings.TrimRight(string(message), "\n")
@@ -159,15 +179,20 @@ func (c *connection) readPump() {
 		} else if command == "FINISH" {
 			return
 		} else if command == "IMPORT" {
+
 			impinfo := strings.Split(param, "|")
+
 			importing = impinfo[0]
 			size, _ = strconv.Atoi(impinfo[1])
+			crc = impinfo[2]
+
+			contents.Reset()
 
 			if verbose {
-				fmt.Print("Import:", importing)
+				fmt.Println("Import:", importing, "  Size:", size, "  Crc:",crc)
 			}
 
-			c.send <- "OK"
+			c.send <- OK
 		} else {
 			fmt.Println("Unknown command", command)
 		}
@@ -187,7 +212,7 @@ func (c *connection) writePump() {
 			}
 
 			if _, err := c.conn.Write([]byte(message + "\n")); err != nil {
-				log.Println("Fail to send data:",message)
+				log.Println("Fail to send data:", message)
 				return
 			}
 
@@ -198,4 +223,3 @@ func (c *connection) writePump() {
 		}
 	}
 }
-

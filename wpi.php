@@ -6,8 +6,12 @@ class WPIException extends \Exception {
 
 class WPI
 {
+
+    const RESPONSE_OK = 0;
+
     const STATE_PREPARE = 0;
     const STATE_UPLOADING = 1;
+    const CHUNK_SIZE = 1024;
 
     const EOP = "\n";
 
@@ -46,10 +50,8 @@ class WPI
      * @return boolean
      * @throws
      */
-    public function start( $progress )
+    public function start( $progress = null )
     {
-        $this->connect();
-
         $sent       = 0;
         $imported   = 0;
         $meta       = $this->prepare();
@@ -57,14 +59,14 @@ class WPI
 
         foreach ($meta['info'] as $name => $value) {
             $this->write("SET " . $name . " " . $value);
-            if(!$this->isOK()) {
+            if( $this->getResponseCode() != self::RESPONSE_OK) {
                 throw new WPIException("Fail to set ".$name." property");
             }
         }
 
         $this->write("SET files " . count($meta['files']));
 
-        if(!$this->isOK()) {
+        if( $this->getResponseCode() != self::RESPONSE_OK) {
             throw new WPIException("Fail to set number of files");
         }
 
@@ -74,11 +76,10 @@ class WPI
 
                 $sent++;
 
-                if($this->import($file)){
-                    $meta['files'][$index]['state'] = 1;
-                    $this->saveMeta($meta);
-                    $imported++;
-                }
+                $this->import($file);
+                $meta['files'][$index]['state'] = 1;
+                $this->saveMeta($meta);
+                $imported++;
 
                 if( $progress ) {
                     call_user_func_array(
@@ -105,17 +106,79 @@ class WPI
         return $imported === $sent;
     }
 
-    private function connect() {
+    /**
+     * @param $file
+     * @return array
+     * @throws Error
+     * @throws WPIException
+     */
+    private function import( $file )
+    {
+        $relative = str_replace($this->path . '/', '', $file['path']);
+
+        $crc = hash_file("md5", $file['path']);
+
+        $this->verbose("Import " . $relative);
+
+        $this->write("IMPORT " . $relative . "|" . filesize($file['path']) . "|" . $crc);
+
+        if ( $this->getResponseCode() != self::RESPONSE_OK ) {
+            return false;
+        }
+
+        if (!file_exists($file['path'])) {
+            unlink($this->path . DIRECTORY_SEPARATOR . "wpi");
+            throw new WPIException("Meta may be corrupted, file to import missing.");
+        }
+
+        $finfo = finfo_open(FILEINFO_MIME);
+        $ascii = substr(finfo_file($finfo, $file['path']), 0, 4) == 'text';
+        finfo_close($finfo);
+
+        $this->verbose("Read mode: " . ($ascii?"ascii":"binary"));
+
+        $handle = fopen($file['path'], $ascii ? "r" : "rb");
+
+        $count=0;
+
+        while(!feof($handle)) {
+            $buffer = fread($handle, self::CHUNK_SIZE);
+            $this->write($buffer, false);
+            fflush($handle);
+            $count++;
+        }
+
+        /**
+         * 0 - OK
+         * 1 - CRC NOT OK
+         */
+
+        $response = $this->getResponseCode();
+
+        if( $response != self::RESPONSE_OK ) {
+            throw new WPIException("Fail to transfer file");
+        }
+
+        $this->verbose("Write " . $count . " chunks");
+    }
+
+    private function verbose($msg) {
+        if(php_sapi_name() === 'cli') {
+            echo $msg.PHP_EOL;
+        }
+    }
+
+    public function connect() {
 
         $this->sock = @stream_socket_client("tcp://" . $this->server, $errorNumber, $errorMessage);
 
         if ($this->sock === false) {
-            throw new UnexpectedValueException("Failed to connect: $errorMessage");
+            throw new UnexpectedValueException("Failed to connect to wpide import server: $errorMessage");
         }
 
         $this->write("AUTH " . $this->token);
 
-        if( !$this->isOK() ) {
+        if( $this->getResponseCode() != self::RESPONSE_OK) {
             throw new WPIException("Authentication failed");
         }
 
@@ -128,9 +191,10 @@ class WPI
         fwrite($this->sock, $data, strlen($data));
     }
 
-    private function isOK() {
-        $string = stream_get_contents($this->sock, 3);
-        return $string === "OK\n";
+    private function getResponseCode() {
+        $string = stream_get_contents($this->sock, 2);
+        $string = trim(preg_replace('/\s\s+/', ' ', $string));
+        return intval($string);
     }
 
     /**
@@ -215,36 +279,6 @@ class WPI
         if( false === file_put_contents($this->metaFile, $json) ) {
             throw new RuntimeException("Fail to write wpi file");
         }
-    }
-
-    /**
-     * @param $file
-     * @return array
-     * @throws Error
-     * @throws WPIException
-     */
-    private function import( $file )
-    {
-        $relative = str_replace($this->path . '/', '', $file['path']);
-
-        $this->write("IMPORT " . $relative . "|" . filesize($file['path']));
-
-        if ( !$this->isOK() ) {
-            return false;
-        }
-
-        if (!file_exists($file['path'])) {
-            unlink($this->path . DIRECTORY_SEPARATOR . "wpi");
-            throw new WPIException("Meta may be corrupted, file to import missing.");
-        }
-
-        $handle = fopen($file['path'], "r");
-        $contents = fread($handle, filesize($file['path']));
-
-        $this->write($contents);
-        $this->write("END");
-
-        return $this->isOK();
     }
 
     /**

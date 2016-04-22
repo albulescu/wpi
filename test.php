@@ -5,36 +5,10 @@ error_reporting(E_ALL);
 
 require "wpi.php";
 
-$wpi = new WPI("144.76.87.164:9999", "/var/www/wp");
+$wpi = new WPI("localhost:9999", "/var/www/wp");
 $wpi->setToken("abc");
-
 $start = microtime(true);
-
-function notify($event, $data = null) {
-    echo "event: " . $event . PHP_EOL;
-    if( $data ) {
-        echo "data: " . json_encode($data) . PHP_EOL;
-    }
-    echo PHP_EOL;
-    @ob_flush();
-    @flush();
-}
-
-try {
-    $wpi->start(function ($info, $progress) {
-        notify("progress", array(
-            'progress' => $progress,
-            'info' => $info
-        ));
-    });
-    notify("complete");
-}
-catch(Exception $e) {
-    notify("error", $e->getMessage());
-}
-
-
-
+$wpi->connect();
+$wpi->start();
 $time_elapsed_secs = microtime(true) - $start;
-
 die("Imported in ". $time_elapsed_secs . "\n");

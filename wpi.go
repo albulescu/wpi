@@ -5,10 +5,15 @@ import (
 	"fmt"
 	"gopkg.in/ini.v1"
 	"net"
+	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 )
 
-var verbose bool = false
+var VERSION string = "0.0.0"
+var DEBUG bool = false
+var verbose bool = true
 
 var MAX_INDEX_WORKERS int = 100
 
@@ -24,11 +29,21 @@ type Configuration struct {
 	Workers      int    `ini:"workers"`
 	TempLifetime string `ini:"lifetime"`
 	Mounts       string `ini:"mounts"`
+	Secret       string `ini:"secret"`
 }
 
 var config *Configuration = &Configuration{}
 
 func main() {
+
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		fmt.Println(VERSION)
+		os.Exit(0)
+	}
+
+	if VERSION == "0.0.0" {
+		DEBUG = true
+	}
 
 	var configFileFlag = flag.String("config", "", "Config file")
 
@@ -82,20 +97,31 @@ func main() {
 	// watch for completed imports
 	go WatchCompleted()
 
-	for {
+	go (func() {
+		for {
 
-		con, err := ln.Accept()
+			con, err := ln.Accept()
 
-		if err != nil {
-			panic(err)
+			if err != nil {
+				panic(err)
+			}
+
+			c := &connection{conn: con, send: make(chan string)}
+
+			counters[c] = 0
+
+			go c.readPump()
+			c.writePump()
 		}
+	})()
 
-		c := &connection{conn: con, send: make(chan string)}
+	ch := make(chan os.Signal)
+	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
+	fmt.Println(<-ch)
 
-		counters[c] = 0
-
-		go c.readPump()
-		c.writePump()
+	fmt.Println("Close active connections")
+	for c, _ := range h.connections {
+		c.conn.Write([]byte("9\n"))
+		c.conn.Close()
 	}
-
 }
