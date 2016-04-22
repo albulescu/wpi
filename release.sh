@@ -8,6 +8,17 @@ if [ ! -f "/etc/init.d/wpi" ]; then
     sudo chmod +x /etc/init.d/wpi
 fi
 
+if [ ! -f "/etc/wpi.conf" ]; then
+    echo "Install configuration file"
+    sudo cp production.conf /etc/wpi.conf
+fi
+
+if [ ! -d "/tmp/wpi" ]; then
+    echo "Create temporary directory"
+    sudo mkdir /tmp/wpi
+    sudo chmod 777 /tmp/wpi
+fi
+
 BINPATH=$1
 APPNAME="wpi"
 
