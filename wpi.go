@@ -63,7 +63,7 @@ func main() {
 
 	ini.MapTo(config)
 
-	if abspath, err := filepath.Abs(config.Temp); err != nil {
+	if _, err := filepath.Abs(config.Temp); err != nil {
 		panic(err)
 		os.Exit(1)
 	}
