@@ -2,6 +2,12 @@
 
 set +x
 
+if [ ! -f "/etc/init.d/wpi" ]; then
+    echo "Install service file"
+    sudo cp wpi.service /etc/init.d/wpi
+    sudo chmod +x /etc/init.d/wpi
+fi
+
 BINPATH=$1
 APPNAME="wpi"
 
@@ -24,11 +30,16 @@ if [ -n "$VERSION" ] && [ "$VERSION" != "$LATEST" ]; then
 
     go build -ldflags "-X main.VERSION=`echo $VERSION`" -o "./$APPNAME" *.go
 
+    sudo /etc/init.d/wpi stop
+
     sudo cp "./$APPNAME" $BINPATH
 
     echo "Release version $(./$APPNAME --version)"
 
     rm -rf "./$APPNAME"
+
+    sudo /etc/init.d/wpi start
+
 else
     echo "No new releases. Latest version is $LATEST"
 fi

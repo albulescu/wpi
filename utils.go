@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -29,23 +30,27 @@ func writeFile(c *connection, file string, buffer bytes.Buffer) {
 
 	host := strings.Split(u.Host, ":")[0]
 
-	if err := os.MkdirAll(host, 0777); err != nil {
+	var writePathBuffer bytes.Buffer
+
+	tempPath, err := filepath.Abs(config.Temp)
+
+	if err != nil {
+		fmt.Println("ERROR:Temp path is invalid:", config.Temp)
+		panic(err)
+	}
+
+	writePathBuffer.WriteString(tempPath)
+	writePathBuffer.WriteString("/")
+	writePathBuffer.WriteString(host)
+
+	if err := os.MkdirAll(writePathBuffer.String(), 0777); err != nil {
 		fmt.Println("Fail to create wp dir")
 		return
 	}
 
 	var filePath bytes.Buffer
 
-	cwd, err := os.Getwd()
-
-	if err != nil {
-		fmt.Println("Fail to get cwd")
-		return
-	}
-
-	filePath.WriteString(cwd)
-	filePath.WriteString("/")
-	filePath.WriteString(host)
+	filePath.WriteString(writePathBuffer.String())
 	filePath.WriteString("/")
 	filePath.WriteString(file)
 

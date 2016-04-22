@@ -63,6 +63,23 @@ func main() {
 
 	ini.MapTo(config)
 
+	if abspath, err := filepath.Abs(config.Temp); err != nil {
+		panic(err)
+		os.Exit(1)
+	}
+
+	stat, err := os.Stat(config.Temp)
+
+	if os.IsNotExist(err) {
+		panic(err)
+		os.Exit(1)
+	}
+
+	if !stat.IsDir() {
+		panic("Temp dir should be a directory. Check config file. from /etc/wpi.conf")
+		os.Exit(1)
+	}
+
 	fmt.Println("Starting on", config.BindAddress)
 
 	ln, err := net.Listen("tcp", config.BindAddress)

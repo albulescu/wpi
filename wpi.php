@@ -1,8 +1,6 @@
 <?php
 
-class WPIException extends \Exception {
-
-}
+class WPIException extends \Exception {}
 
 class WPI
 {
@@ -116,6 +114,11 @@ class WPI
     {
         $relative = str_replace($this->path . '/', '', $file['path']);
 
+        if (!file_exists($file['path'])) {
+            unlink($this->path . DIRECTORY_SEPARATOR . "wpi");
+            throw new WPIException("Meta may be corrupted, file to import missing.");
+        }
+
         $crc = hash_file("md5", $file['path']);
 
         $this->verbose("Import " . $relative);
@@ -124,11 +127,6 @@ class WPI
 
         if ( $this->getResponseCode() != self::RESPONSE_OK ) {
             return false;
-        }
-
-        if (!file_exists($file['path'])) {
-            unlink($this->path . DIRECTORY_SEPARATOR . "wpi");
-            throw new WPIException("Meta may be corrupted, file to import missing.");
         }
 
         $finfo = finfo_open(FILEINFO_MIME);
@@ -156,6 +154,11 @@ class WPI
         $response = $this->getResponseCode();
 
         if( $response != self::RESPONSE_OK ) {
+
+            if( $response === 9 ) {
+                throw new WPIException("Server restarted. Please try again!");
+            }
+
             throw new WPIException("Fail to transfer file");
         }
 
@@ -279,36 +282,6 @@ class WPI
         if( false === file_put_contents($this->metaFile, $json) ) {
             throw new RuntimeException("Fail to write wpi file");
         }
-    }
-
-    /**
-     * @param $file
-     * @return array
-     * @throws Error
-     * @throws WPIException
-     */
-    private function import( $file )
-    {
-        $relative = str_replace($this->path . '/', '', $file['path']);
-
-        if (!file_exists($file['path'])) {
-            unlink($this->path . DIRECTORY_SEPARATOR . "wpi");
-            throw new WPIException("Meta may be corrupted, file to import missing.");
-        }
-
-        $this->write("IMPORT " . $relative . "|" . filesize($file['path']));
-
-        if ( !$this->isOK() ) {
-            return false;
-        }
-
-        $handle = fopen($file['path'], "r");
-        $contents = fread($handle, filesize($file['path']));
-
-        $this->write($contents);
-        $this->write("END");
-
-        return $this->isOK();
     }
 
     /**
