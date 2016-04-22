@@ -8,7 +8,7 @@
 # Description:       WordPress IDE Import Service
 ### END INIT INFO
 
-SCRIPT=/usr/local/bin/wpi --config=/etc/wpi.conf
+SCRIPT=/usr/local/bin/wpi
 RUNAS=root
 
 PIDFILE=/var/run/wpi.pid

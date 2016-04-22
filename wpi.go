@@ -45,7 +45,7 @@ func main() {
 		DEBUG = true
 	}
 
-	var configFileFlag = flag.String("config", "", "Config file")
+	var configFileFlag = flag.String("config", "/etc/wpi.conf", "Config file")
 
 	flag.Parse()
 
