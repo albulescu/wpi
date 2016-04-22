@@ -207,8 +207,12 @@ func (c *connection) readPump() {
 					fmt.Println("File is empty. Just create the file!")
 				}
 
+				prepareFilePath(c, cImportFile)
+
 				ioutil.WriteFile(cImportFile, []byte(""), 0755)
+
 				cImportFile = ""
+
 				continue
 			}
 

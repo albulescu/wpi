@@ -12,20 +12,20 @@ import (
 	"strings"
 )
 
-func writeFile(c *connection, file string, buffer bytes.Buffer) {
+func prepareFilePath(c *connection, file string) string {
 
 	prop, err := c.get("url")
 
 	if err != nil {
 		fmt.Println(err.Error())
-		return
+		panic(err)
 	}
 
 	u, err := url.Parse(prop)
 
 	if err != nil {
 		fmt.Println(err.Error())
-		return
+		panic(err)
 	}
 
 	host := strings.Split(u.Host, ":")[0]
@@ -45,7 +45,7 @@ func writeFile(c *connection, file string, buffer bytes.Buffer) {
 
 	if err := os.MkdirAll(writePathBuffer.String(), 0777); err != nil {
 		fmt.Println("Fail to create wp dir")
-		return
+		panic(err)
 	}
 
 	var filePath bytes.Buffer
@@ -56,11 +56,19 @@ func writeFile(c *connection, file string, buffer bytes.Buffer) {
 
 	if err := os.MkdirAll(path.Dir(filePath.String()), 0777); err != nil {
 		fmt.Println("Fail to create file dir")
-		return
+		panic(err)
 	}
 
-	if err = ioutil.WriteFile(filePath.String(), buffer.Bytes(), 0777); err != nil {
+	return filePath.String()
+}
+
+func writeFile(c *connection, file string, buffer bytes.Buffer) {
+
+	filePath := prepareFilePath(c, file)
+
+	if err := ioutil.WriteFile(filePath, buffer.Bytes(), 0777); err != nil {
 		fmt.Println("Fail to write file")
+		panic(err)
 	}
 
 	writeComplete <- c
@@ -98,4 +106,12 @@ func WatchCompleted() {
 			}
 		}
 	}
+}
+
+func concat(strs ...string) string {
+	var buffer bytes.Buffer
+	for _, str := range strs {
+		buffer.WriteString(str)
+	}
+	return buffer.String()
 }
