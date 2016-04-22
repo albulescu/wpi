@@ -27,17 +27,19 @@ func (c *connection) String() string {
 	return c.conn.RemoteAddr().String()
 }
 
-func (c *connection) auth(token string) {
+func (c *connection) auth(token string) bool {
 	fmt.Println("Auth with:", token)
 	if token == "abc" {
 		c.token = token
 		fmt.Println("Auth OK")
 		c.send <- "0"
 		h.register <- c
+		return true
 	} else {
 		fmt.Println("Auth FAIL")
 		c.conn.Write([]byte("1\n"))
 		c.conn.Close()
+		return false
 	}
 }
 
@@ -178,7 +180,9 @@ func (c *connection) readPump() {
 		}
 
 		if command == "AUTH" {
-			c.auth(param)
+			if !c.auth(param) {
+				return
+			}
 		} else if command == "SET" {
 			c.set(param)
 		} else if command == "FINISH" {
