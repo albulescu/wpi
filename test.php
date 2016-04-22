@@ -7,6 +7,7 @@ require "wpi.php";
 
 $wpi = new WPI("localhost:9999", "/var/www/wp");
 $wpi->setToken("abc");
+$wpi->setVerbose(true);
 $start = microtime(true);
 $wpi->connect();
 $wpi->start();

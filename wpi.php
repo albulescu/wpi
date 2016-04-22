@@ -23,6 +23,8 @@ class WPI
 
     private $sock;
 
+    private $verboseEnabled = false;
+
     public function __construct( $server, $path )
     {
         $this->server = $server;
@@ -42,6 +44,10 @@ class WPI
      */
     public function setToken($token) {
         $this->token = $token;
+    }
+
+    public function setVerbose($state) {
+        $this->verboseEnabled = $state;
     }
 
     /**
@@ -166,7 +172,7 @@ class WPI
     }
 
     private function verbose($msg) {
-        if(php_sapi_name() === 'cli') {
+        if($this->verboseEnabled) {
             echo $msg.PHP_EOL;
         }
     }
@@ -176,7 +182,7 @@ class WPI
         $this->sock = @stream_socket_client("tcp://" . $this->server, $errorNumber, $errorMessage);
 
         if ($this->sock === false) {
-            throw new UnexpectedValueException("Failed to connect to wpide import server: $errorMessage");
+            throw new UnexpectedValueException("Failed to connect to wpide import server " . $this->server);
         }
 
         $this->write("AUTH " . $this->token);

@@ -3,13 +3,13 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/md5"
 	"errors"
 	"fmt"
 	"log"
 	"net"
 	"strconv"
 	"strings"
-	"crypto/md5"
 )
 
 var OK string = "0"
@@ -94,12 +94,12 @@ func (c *connection) readPump() {
 		*/
 		if importing != "" {
 
-			var chunk []byte = make([]byte,1024);
+			var chunk []byte = make([]byte, 1024)
 
 			n, err := reader.Read(chunk)
 
 			if err != nil {
-				panic(err);
+				return
 			}
 
 			if n == 0 {
@@ -108,7 +108,7 @@ func (c *connection) readPump() {
 
 			cntWriteNum, cntWriteErr := contents.Write(chunk[:n])
 
-			if cntWriteErr!=nil {
+			if cntWriteErr != nil {
 				panic(cntWriteErr)
 			}
 
@@ -122,7 +122,7 @@ func (c *connection) readPump() {
 
 				if fmt.Sprintf("%x", importedCrc) != crc {
 					c.send <- "1"
-					break;
+					break
 				}
 
 				writeFiles <- WriteJob{c: c, file: importing, buffer: contents}
@@ -189,7 +189,7 @@ func (c *connection) readPump() {
 			contents.Reset()
 
 			if verbose {
-				fmt.Println("Import:", importing, "  Size:", size, "  Crc:",crc)
+				fmt.Println("Import:", importing, "  Size:", size, "  Crc:", crc)
 			}
 
 			c.send <- OK
