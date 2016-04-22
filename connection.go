@@ -6,6 +6,7 @@ import (
 	"crypto/md5"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"strconv"
@@ -98,8 +99,12 @@ func (c *connection) readPump() {
 
 			n, err := reader.Read(chunk)
 
-			if err != nil {
+			if err == io.EOF {
 				return
+			}
+
+			if err != nil {
+				panic(err)
 			}
 
 			if n == 0 {
