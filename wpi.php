@@ -282,6 +282,36 @@ class WPI
     }
 
     /**
+     * @param $file
+     * @return array
+     * @throws Error
+     * @throws WPIException
+     */
+    private function import( $file )
+    {
+        $relative = str_replace($this->path . '/', '', $file['path']);
+
+        if (!file_exists($file['path'])) {
+            unlink($this->path . DIRECTORY_SEPARATOR . "wpi");
+            throw new WPIException("Meta may be corrupted, file to import missing.");
+        }
+
+        $this->write("IMPORT " . $relative . "|" . filesize($file['path']));
+
+        if ( !$this->isOK() ) {
+            return false;
+        }
+
+        $handle = fopen($file['path'], "r");
+        $contents = fread($handle, filesize($file['path']));
+
+        $this->write($contents);
+        $this->write("END");
+
+        return $this->isOK();
+    }
+
+    /**
      * @param $wpdb
      * @throws WPIException
      */
