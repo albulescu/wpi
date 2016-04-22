@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"strconv"
@@ -196,11 +197,22 @@ func (c *connection) readPump() {
 			cImportSize, _ = strconv.Atoi(impinfo[1])
 			cImportCRC = impinfo[2]
 
-			cFileBuffer.Reset()
-
 			if verbose {
 				fmt.Println("Import:", cImportFile, "  Size:", cImportSize, "  Crc:", cImportCRC)
 			}
+
+			if cImportSize == 0 {
+
+				if verbose {
+					fmt.Println("File is empty. Just create the file!")
+				}
+
+				ioutil.WriteFile(cImportFile, []byte(""), 0755)
+				cImportFile = ""
+				continue
+			}
+
+			cFileBuffer.Reset()
 
 			c.send <- OK
 		} else {
