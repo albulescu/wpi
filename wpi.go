@@ -50,7 +50,7 @@ func main() {
 
 	var configFileFlag = flag.String("config", "/etc/wpi.conf", "Config file")
 
-	verbose = *flag.Bool("verbose", false, "--verbose")
+	flag.BoolVar(&verbose, "verbose", false, "--verbose")
 
 	flag.Parse()
 
