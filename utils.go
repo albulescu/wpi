@@ -12,19 +12,39 @@ import (
 	"strings"
 )
 
+func exists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return true, err
+}
+
+func createEmptyFile(name string) error {
+	fo, err := os.Create(name)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		fo.Close()
+	}()
+	return nil
+}
+
 func prepareFilePath(c *connection, file string) string {
 
 	prop, err := c.get("url")
 
 	if err != nil {
-		fmt.Println(err.Error())
 		panic(err)
 	}
 
 	u, err := url.Parse(prop)
 
 	if err != nil {
-		fmt.Println(err.Error())
 		panic(err)
 	}
 
@@ -35,7 +55,6 @@ func prepareFilePath(c *connection, file string) string {
 	tempPath, err := filepath.Abs(config.Temp)
 
 	if err != nil {
-		fmt.Println("ERROR:Temp path is invalid:", config.Temp)
 		panic(err)
 	}
 
@@ -43,9 +62,19 @@ func prepareFilePath(c *connection, file string) string {
 	writePathBuffer.WriteString("/")
 	writePathBuffer.WriteString(host)
 
-	if err := os.MkdirAll(writePathBuffer.String(), 0777); err != nil {
-		fmt.Println("Fail to create wp dir")
+	siteExist, err := exists(writePathBuffer.String())
+
+	if err != nil {
 		panic(err)
+	}
+
+	if !siteExist {
+		if verbose {
+			fmt.Println("Create directory: ", writePathBuffer.String())
+		}
+		if err := os.MkdirAll(writePathBuffer.String(), 0777); err != nil {
+			panic(err)
+		}
 	}
 
 	var filePath bytes.Buffer
@@ -54,9 +83,19 @@ func prepareFilePath(c *connection, file string) string {
 	filePath.WriteString("/")
 	filePath.WriteString(file)
 
-	if err := os.MkdirAll(path.Dir(filePath.String()), 0777); err != nil {
-		fmt.Println("Fail to create file dir")
+	fExists, err := exists(path.Dir(filePath.String()))
+
+	if err != nil {
 		panic(err)
+	}
+
+	if !fExists {
+		if verbose {
+			fmt.Println("Create directory: ", path.Dir(filePath.String()))
+		}
+		if err := os.MkdirAll(path.Dir(filePath.String()), 0777); err != nil {
+			panic(err)
+		}
 	}
 
 	return filePath.String()

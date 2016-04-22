@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"strconv"
@@ -186,6 +185,9 @@ func (c *connection) readPump() {
 		} else if command == "SET" {
 			c.set(param)
 		} else if command == "FINISH" {
+			if verbose {
+				fmt.Println("Finished importing files")
+			}
 			c.conn.Write([]byte("{\"url\":\"http://wpide.net\"}"))
 			c.conn.Close()
 			return
@@ -201,22 +203,28 @@ func (c *connection) readPump() {
 				fmt.Println("Import:", cImportFile, "  Size:", cImportSize, "  Crc:", cImportCRC)
 			}
 
+			cFileBuffer.Reset()
+
 			if cImportSize == 0 {
 
 				if verbose {
 					fmt.Println("File is empty. Just create the file!")
 				}
 
-				prepareFilePath(c, cImportFile)
+				err := createEmptyFile(prepareFilePath(c, cImportFile))
 
-				ioutil.WriteFile(cImportFile, []byte(""), 0755)
+				if err != nil {
+					panic(err)
+				}
+
+				//Write ok for import
+				//packet and for data transfer ok
+				c.conn.Write([]byte("0\n0\n"))
 
 				cImportFile = ""
 
 				continue
 			}
-
-			cFileBuffer.Reset()
 
 			c.send <- OK
 		} else {
