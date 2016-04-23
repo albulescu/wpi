@@ -120,6 +120,8 @@ func main() {
 	// watch for completed imports
 	go WatchCompleted()
 
+	go WatchMysqlInstance()
+
 	go (func() {
 		for {
 

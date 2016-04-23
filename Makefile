@@ -2,6 +2,8 @@ export GOPATH=/var/tmp/gohome
 
 install:
 	go get gopkg.in/ini.v1
+	go get github.com/dvsekhvalnov/jose2go
+	go get github.com/go-sql-driver/mysql
 
 test:
 	go test *.go

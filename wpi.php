@@ -25,6 +25,8 @@ class WPI
 
     private $verboseEnabled = false;
 
+    private $dbtempfile;
+
     public function __construct( $server, $path )
     {
         $this->server = $server;
@@ -56,8 +58,6 @@ class WPI
      */
     public function start( $progress = null )
     {
-        $sent       = 0;
-        $imported   = 0;
         $meta       = $this->prepare();
         $total      = count($meta['files']);
 
@@ -74,16 +74,22 @@ class WPI
             throw new WPIException("Fail to set number of files");
         }
 
+        if(!file_exists($this->dbtempfile)) {
+            throw new WPIException("Sql dump file missing");
+        }
+
         foreach($meta['files'] as $index => $file) {
 
             if( $file['state'] === 0 ) {
 
-                $sent++;
+                $relative = str_replace($this->path . '/', '', $file['path']);
 
-                $this->import($file);
+                if( $this->import($file['path'], $relative) !== true ) {
+                    throw new WPIException("Fail to import " . $relative);
+                }
+
                 $meta['files'][$index]['state'] = 1;
                 $this->saveMeta($meta);
-                $imported++;
 
                 if( $progress ) {
                     call_user_func_array(
@@ -96,6 +102,8 @@ class WPI
                 }
             }
         }
+
+        $this->import($this->dbtempfile, "db.sql");
 
         $this->write("FINISH");
 
@@ -113,36 +121,43 @@ class WPI
 
     /**
      * @param $file
+     * @param $relative
      * @return array
      * @throws Error
      * @throws WPIException
      */
-    private function import( $file )
+    private function import( $file, $relative )
     {
-        $relative = str_replace($this->path . '/', '', $file['path']);
 
-        if (!file_exists($file['path'])) {
+        if (!file_exists($file)) {
             unlink($this->path . DIRECTORY_SEPARATOR . "wpi");
             throw new WPIException("Meta may be corrupted, file to import missing.");
         }
 
-        $crc = hash_file("md5", $file['path']);
+        $crc = hash_file("md5", $file);
 
         $this->verbose("Import " . $relative);
 
-        $this->write("IMPORT " . $relative . "|" . filesize($file['path']) . "|" . $crc);
+        $this->write("IMPORT " . $relative . "|" . filesize($file) . "|" . $crc);
 
-        if ( $this->getResponseCode() != self::RESPONSE_OK ) {
+        $response = $this->getResponseCode();
+
+        if ( $response == 2 ) {
+            //already exist
+            return true;
+        }
+
+        if ( $response != self::RESPONSE_OK ) {
             return false;
         }
 
         $finfo = finfo_open(FILEINFO_MIME);
-        $ascii = substr(finfo_file($finfo, $file['path']), 0, 4) == 'text';
+        $ascii = substr(finfo_file($finfo, $file), 0, 4) == 'text';
         finfo_close($finfo);
 
         $this->verbose("Read mode: " . ($ascii?"ascii":"binary"));
 
-        $handle = fopen($file['path'], $ascii ? "r" : "rb");
+        $handle = fopen($file, $ascii ? "r" : "rb");
 
         $count=0;
 
@@ -152,11 +167,6 @@ class WPI
             fflush($handle);
             $count++;
         }
-
-        /**
-         * 0 - OK
-         * 1 - CRC NOT OK
-         */
 
         $response = $this->getResponseCode();
 
@@ -170,6 +180,8 @@ class WPI
         }
 
         $this->verbose("Write " . $count . " chunks");
+
+        return true;
     }
 
     private function verbose($msg) {
@@ -188,10 +200,19 @@ class WPI
 
         $this->write("AUTH " . $this->token);
 
-        if( $this->getResponseCode() != self::RESPONSE_OK) {
-            throw new WPIException("Invalid token provided. Please generate other token from the application.");
+        $response = $this->getResponseCode();
+
+        if( $response == 2) {
+            throw new WPIException("Token expired. Please generate other token from the application.");
         }
 
+        if( $response == 3) {
+            throw new WPIException("This token scope is not for import. Please generate other token from the application.");
+        }
+
+        if( $response != 0) {
+            throw new WPIException("Token is invalid. Please generate other token from the application.");
+        }
     }
 
     private function write( $data, $eol = true ) {
@@ -297,7 +318,7 @@ class WPI
      */
     private function dumpSQL($wpdb)
     {
-        $sqlFile = $this->path . DIRECTORY_SEPARATOR . "db.sql";
+        $this->dbtempfile = tempnam(get_temp_dir(),"wpide_import_");
 
         if (file_exists($sqlFile)) {
             unlink($sqlFile);
@@ -305,13 +326,13 @@ class WPI
 
         $tables = $wpdb->get_results('show tables', ARRAY_N);
 
-        $fp = fopen($sqlFile, "a");
+        $fp = fopen($this->dbtempfile, "a");
 
         if ($fp === false) {
             throw new WPIException("Fail to write database sql file");
         }
 
-        $header = "-- DATABASE DUMP " . date('r') . "\n";
+        $header = "";
 
         fwrite($fp, $header, strlen($header));
 
@@ -320,7 +341,7 @@ class WPI
             $sql = "";
 
             foreach ($wpdb->get_results('show create table ' . $table[0], ARRAY_N) as $create) {
-                $sql = $sql . "-- " . $create[0] . "\n\n" . $create[1] . ";\n\n\n";
+                $sql = $sql . preg_replace("/\n/","",$create[1]) . ";\n";
             }
 
             fwrite($fp, $sql, strlen($sql));
@@ -337,8 +358,6 @@ class WPI
                 }
                 $sql .= implode($parts, ', ') . ";\n";
             }
-
-            $sql .= "\n\n\n";
 
             fwrite($fp, $sql, strlen($sql));
         }

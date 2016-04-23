@@ -4,23 +4,72 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/md5"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/dvsekhvalnov/jose2go"
 	"io"
 	"log"
 	"net"
 	"strconv"
 	"strings"
+	"time"
 )
+
+/**
+ * TODO:
+- Ping sockets
+- Create docker & Create database
+- Remove old files from mounts && Copy files to mounts
+- Replace url's
+- Update wp-config.php
+- Ping sockets
+- Cleanup temp
+
+- fail
+- Delete docker instance ( use /commands )
+- Ping sockets
+- Inform plugin
+
+
+CALL IMPORT  https://api.wpide.net/vi/import
+
+Add Header:
+Authorization: Bearer ...
+
+{
+  "domain":"",
+  "title":"",
+  "adminEmail":"",
+  "container_id":""$CONTAINER_ID"",
+  "database_name":""$DATABASE_NAME"",
+  "database_pass":""$DATABASE_PASS"",
+  "container_port":""$PORT""
+  "server_ip":""
+}
+
+*/
 
 var OK string = "0"
 var CHUNK_SIZE = 1024
 
+type AccessToken struct {
+	Scope    string `json:"scope,omitempty"`
+	Data     string `json:"data,omitempty"`
+	IssuedAt int64  `json:"iat,omitempty"`
+	ExpireAt int64  `json:"exp,omitempty"`
+	Token    string
+}
+
+func (at *AccessToken) String() string {
+	return concat("[Scope:", at.Scope, ", Data:", fmt.Sprintf("%v", at.Data), "]")
+}
+
 type connection struct {
 	conn   net.Conn
 	send   chan string
-	token  string
 	params map[string]string
+	access *AccessToken
 }
 
 func (c *connection) String() string {
@@ -31,18 +80,50 @@ func (c *connection) auth(token string) bool {
 
 	fmt.Println("Auth with:", token)
 
-	if token == "abc" {
-		c.token = token
-		fmt.Println("Auth OK")
-		c.send <- "0"
-		h.register <- c
-		return true
-	} else {
-		fmt.Println("Auth FAIL")
+	payload, _, err := jose.Decode(token, []byte(config.Secret))
+
+	if err != nil {
 		c.conn.Write([]byte("1\n"))
 		c.conn.Close()
 		return false
 	}
+
+	jwt := new(AccessToken)
+
+	jwt.Token = token
+
+	err = json.Unmarshal([]byte(payload), &jwt)
+
+	if err != nil {
+		panic(err)
+	}
+
+	expire := jwt.ExpireAt - int64(time.Now().Unix())
+
+	if expire < 0 {
+		fmt.Println("Token expired")
+		c.conn.Write([]byte("2\n"))
+		c.conn.Close()
+		return false
+	}
+
+	if jwt.Scope != "import" {
+		fmt.Println("Token has other scope than import")
+		c.conn.Write([]byte("3\n"))
+		c.conn.Close()
+		return false
+	}
+
+	fmt.Println("Auth OK")
+	fmt.Println("Auth Access:", jwt.String())
+	c.access = jwt
+
+	c.send <- "0"
+
+	h.register <- c
+
+	return true
+
 }
 
 func (c *connection) set(data string) {
@@ -61,6 +142,13 @@ func (c *connection) set(data string) {
 	log.Println("SET ", data)
 
 	c.params[part[0]] = part[1]
+
+	if part[0] == "url" {
+		sendSocketEvent("import.start", map[string]interface{}{
+			"user": c.access.Data,
+			"url":  part[1],
+		})
+	}
 
 	c.send <- OK
 }
@@ -173,7 +261,7 @@ func (c *connection) readPump() {
 			}
 		}
 
-		if command != "AUTH" && c.token == "" {
+		if command != "AUTH" && c.access == nil {
 			c.error("NOAUTH")
 			return
 		}
@@ -185,12 +273,29 @@ func (c *connection) readPump() {
 		} else if command == "SET" {
 			c.set(param)
 		} else if command == "FINISH" {
+
 			if verbose {
 				fmt.Println("Finished importing files")
 			}
-			c.conn.Write(completeJson("http://wpide.net"))
+
+			resp := finish(c)
+
+			if resp.Success {
+				sendSocketEvent("import.complete", map[string]interface{}{
+					"user": c.access.Data,
+				})
+			}
+
+			json, err := json.Marshal(resp)
+
+			if err != nil {
+				panic(err)
+			}
+
+			c.conn.Write(json)
 			c.conn.Close()
 			return
+
 		} else if command == "IMPORT" {
 
 			impinfo := strings.Split(param, "|")
@@ -199,11 +304,43 @@ func (c *connection) readPump() {
 			cImportSize, _ = strconv.Atoi(impinfo[1])
 			cImportCRC = impinfo[2]
 
+			filePath := prepareFilePath(c, cImportFile)
+
 			if verbose {
-				fmt.Println("Import:", cImportFile, "  Size:", cImportSize, "  Crc:", cImportCRC)
+				log.Println("Import:", cImportFile, "  Size:", cImportSize, "  Crc:", cImportCRC)
 			}
 
 			cFileBuffer.Reset()
+
+			// -- CHECK IF FILE EXISTS TO SKIP IT -----
+
+			filePathExists, err := Exists(filePath)
+
+			if err != nil {
+				panic(err)
+			}
+
+			if filePathExists {
+
+				filePathCrc, err := FileCrc(filePath)
+				if err != nil {
+					panic(err)
+				}
+
+				if filePathCrc == cImportCRC {
+					log.Println("File already exist:", cImportFile)
+					c.conn.Write([]byte("2\n"))
+					cImportFile = ""
+					continue
+				}
+			}
+
+			// -----------------------------------------
+
+			/**
+			 * If file size of imported file is empty just
+			 * create an empty file in destination path
+			 */
 
 			if cImportSize == 0 {
 
@@ -211,7 +348,7 @@ func (c *connection) readPump() {
 					fmt.Println("File is empty. Just create the file!")
 				}
 
-				err := createEmptyFile(prepareFilePath(c, cImportFile))
+				err := createEmptyFile(filePath)
 
 				if err != nil {
 					panic(err)
