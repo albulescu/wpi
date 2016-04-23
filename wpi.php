@@ -189,7 +189,7 @@ class WPI
         $this->write("AUTH " . $this->token);
 
         if( $this->getResponseCode() != self::RESPONSE_OK) {
-            throw new WPIException("Authentication failed");
+            throw new WPIException("Invalid token provided. Please generate other token from the application.");
         }
 
     }

@@ -12,4 +12,5 @@ $start = microtime(true);
 $wpi->connect();
 $output = $wpi->start();
 $time_elapsed_secs = microtime(true) - $start;
+echo $output . PHP_EOL;
 die("Imported in ". $time_elapsed_secs . "\n");
