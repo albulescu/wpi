@@ -64,6 +64,7 @@ func randomDomain() string {
 	const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	b := make([]byte, n)
 	for i := range b {
+		rand.Seed(time.Now().UTC().UnixNano())
 		b[i] = letterBytes[rand.Intn(len(letterBytes))]
 	}
 
@@ -184,7 +185,7 @@ func WatchMysqlInstance() {
 	for {
 		log.Println("Check if docker mysql is on")
 		checkMysqlIsUp()
-		time.Sleep(time.Minute)
+		time.Sleep(time.Minute * 10)
 	}
 }
 
