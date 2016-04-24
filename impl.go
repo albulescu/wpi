@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/md5"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -118,10 +119,14 @@ func sendSocketEvent(event string, data map[string]interface{}) {
 
 	fmt.Println("Notify socket on:", wsEndpoint, "with data:", string(jsonStr))
 
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+
 	req, err := http.NewRequest("POST", wsEndpoint, bytes.NewBuffer(jsonStr))
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := &http.Client{Transport: tr}
 	resp, err := client.Do(req)
 
 	if err != nil {
@@ -316,7 +321,10 @@ func notifyDashboard(c *connection, docker *DockerResponse, instance string, wpA
 	req.Header.Set("Authorization", c.access.Token)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: tr}
 	resp, err := client.Do(req)
 
 	if err != nil {
