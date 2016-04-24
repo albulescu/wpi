@@ -112,6 +112,7 @@ func sendSocketEvent(event string, data map[string]interface{}) {
 	jsonStr, err := json.Marshal(ev)
 
 	if err != nil {
+		fmt.Println("ERROR: Fail to marshal event:", err.Error())
 		panic(err)
 	}
 
@@ -124,7 +125,7 @@ func sendSocketEvent(event string, data map[string]interface{}) {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		fmt.Println("ERROR: Fail to notify socket")
+		fmt.Println("ERROR: Fail to notify socket:", err.Error())
 		return
 	}
 
