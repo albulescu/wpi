@@ -276,7 +276,7 @@ func updateWordPress(c *connection, docker *DockerResponse, path string, pURL st
 		_, err = db.Exec(string(sqlString))
 
 		if err != nil {
-			fmt.Println("Fail to execute query:", string(sqlString))
+			fmt.Println("Fail to execute query:", err.Error(), " ->", string(sqlString))
 			return err
 		}
 

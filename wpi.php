@@ -58,6 +58,7 @@ class WPI
      */
     public function start( $progress = null )
     {
+        $sent = 0;
         $meta       = $this->prepare();
         $total      = count($meta['files']);
 
@@ -87,6 +88,8 @@ class WPI
                 if( $this->import($file['path'], $relative) !== true ) {
                     throw new WPIException("Fail to import " . $relative);
                 }
+
+                $sent++;
 
                 $meta['files'][$index]['state'] = 1;
                 $this->saveMeta($meta);
