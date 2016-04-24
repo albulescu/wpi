@@ -103,7 +103,7 @@ func sendSocketEvent(event string, data map[string]interface{}) {
 		data,
 	}
 
-	wsEndpoint := "http://ws.wpide.net/event"
+	wsEndpoint := "https://ws.wpide.net/event"
 
 	if DEBUG {
 		wsEndpoint = "http://localhost:9990/event"
