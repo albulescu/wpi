@@ -277,9 +277,7 @@ class WPI
 
         require $this->path . DIRECTORY_SEPARATOR . "wp-load.php";
 
-        global $wpdb;
-
-        $this->dumpSQL($wpdb);
+        $this->dumpSQL();
 
         $meta = array();
 
@@ -319,52 +317,23 @@ class WPI
      * @param $wpdb
      * @throws WPIException
      */
-    private function dumpSQL($wpdb)
+    private function dumpSQL()
     {
         $this->dbtempfile = tempnam(get_temp_dir(),"wpide_import_");
+        $host = DB_HOST;
+        $user = DB_USER;
+        $pass = DB_PASSWORD;
+        $dbname = DB_NAME;
+        $auth = "--opt -h $host -u $user";
 
-        if (file_exists($sqlFile)) {
-            unlink($sqlFile);
+        if( $pass != "" ) {
+            $auth .= "-p $pass";
         }
 
-        $tables = $wpdb->get_results('show tables', ARRAY_N);
+        system("mysqldump $auth $dbname > " . $this->dbtempfile, $retval);
 
-        $fp = fopen($this->dbtempfile, "a");
-
-        if ($fp === false) {
-            throw new WPIException("Fail to write database sql file");
+        if( $retval != 0 ) {
+            throw new WPIException("Fail to create backup file");
         }
-
-        $header = "";
-
-        fwrite($fp, $header, strlen($header));
-
-        foreach ($tables as $table) {
-
-            $sql = "";
-
-            foreach ($wpdb->get_results('show create table ' . $table[0], ARRAY_N) as $create) {
-                $sql = $sql . preg_replace("/\n/","",$create[1]) . ";\n";
-            }
-
-            fwrite($fp, $sql, strlen($sql));
-
-
-            $data = $wpdb->get_results("SELECT * FROM " . $table[0], ARRAY_A);
-
-            $sql = "";
-            foreach ($data as $row) {
-                $sql .= "INSERT INTO `" . $table[0] . "` SET ";
-                $parts = array();
-                foreach ($row as $field => $value) {
-                    $parts[] = "`" . $field . "` = '" . esc_sql($value) . "'";
-                }
-                $sql .= implode($parts, ', ') . ";\n";
-            }
-
-            fwrite($fp, $sql, strlen($sql));
-        }
-
-        fclose($fp);
     }
 }

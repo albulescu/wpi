@@ -18,15 +18,15 @@ func FileCrc(path string) (string, error) {
 	return fmt.Sprintf("%x", sum), nil
 }
 
-func Exists(path string) (bool, error) {
+func Exists(path string) bool {
 	_, err := os.Stat(path)
 	if err == nil {
-		return true, nil
+		return true
 	}
 	if os.IsNotExist(err) {
-		return false, nil
+		return false
 	}
-	return true, err
+	return true
 }
 
 func ReadFile(filename string) (*bytes.Buffer, error) {
@@ -116,12 +116,14 @@ func CopyDir(source string, dest string) (err error) {
 			err = CopyDir(sourcefilepointer, destinationfilepointer)
 			if err != nil {
 				fmt.Println(err)
+				return err
 			}
 		} else {
 			// perform copy
 			err = CopyFile(sourcefilepointer, destinationfilepointer)
 			if err != nil {
 				fmt.Println(err)
+				return err
 			}
 		}
 

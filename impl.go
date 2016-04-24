@@ -1,14 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/md5"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	_ "github.com/go-sql-driver/mysql"
 	"io"
 	"io/ioutil"
 	"log"
@@ -128,6 +125,7 @@ func sendSocketEvent(event string, data map[string]interface{}) {
 
 	if err != nil {
 		fmt.Println("ERROR: Fail to notify socket")
+		return
 	}
 
 	defer resp.Body.Close()
@@ -177,7 +175,8 @@ func checkMysqlIsUp() {
 		panic(err)
 	}
 
-	dockerMysqlHost = string(host)
+	dockerMysqlHost := strings.Trim(string(host), "\n")
+
 	log.Println("Set docker host to:", dockerMysqlHost)
 }
 
@@ -207,86 +206,48 @@ func updateWordPress(c *connection, docker *DockerResponse, path string, pURL st
 		return err
 	}
 
+	log.Println("Replace", url, "with", pURL)
+
 	dbsNew := strings.Replace(dbs.String(), url, pURL, -1)
 
-	dbs.Reset() // clear the buffer
+	if errWrite := ioutil.WriteFile(sqlFile, []byte(dbsNew), 0777); errWrite != nil {
+		log.Println("Fail to write change sql file")
+		return errWrite
+	}
 
-	dbbuf := bufio.NewReader(strings.NewReader(dbsNew))
+	dbs.Reset() // clear the buffer
 
 	if err != nil {
 		log.Println("Fail to read db buffer")
 		panic(err)
 	}
 
+	if !Exists(sqlFile) {
+		return errors.New(concat("SQL file missing from ", sqlFile))
+	}
+
 	checkMysqlIsUp()
 
-	mysqlHostString := strings.Trim(string(dockerMysqlHost), "\n")
+	impcmd := concats("mysql", "-h", "172.17.0.39", "-u", docker.DatabaseName, concat("-p", docker.DatabasePass), docker.DatabaseName, "<", sqlFile)
 
-	connectInfo := concat(docker.DatabaseName, ":", docker.DatabasePass, "@tcp(", mysqlHostString, ":3306)/", docker.DatabaseName)
+	shfile := concat(path, "/db-import.sh")
 
-	log.Println("Connecting to mysql:", connectInfo)
-
-	db, err := sql.Open("mysql", connectInfo)
-	defer db.Close()
-
-	// CLEAN DATABASE
-	//
-	result, err := db.Query("show tables")
-
-	if err != nil {
-		log.Println("Fail to get tables:", err.Error())
-		return err
+	if errWriteSh := ioutil.WriteFile(shfile, []byte(impcmd), 0755); errWriteSh != nil {
+		log.Println("Fail to write sh file")
+		return errWriteSh
 	}
 
-	for result.Next() {
+	errImportSql := exec.Command("/bin/bash", shfile).Run()
 
-		var tableName string
-
-		result.Scan(&tableName)
-
-		_, err := db.Exec(concat("DROP TABLE IF EXISTS ", tableName))
-
-		if err != nil {
-			log.Println("Fail to drop table :", err.Error())
-		}
+	if errImportSql != nil {
+		log.Println("ERROR: Import failed ", errImportSql.Error())
+		return errImportSql
 	}
 
-	if err != nil {
-		panic(err)
-	}
-
-	if err != nil {
-		fmt.Println("Failed to connect to docker mysql:", connectInfo)
-		return err
-	}
-
-	for {
-
-		sqlString, err := dbbuf.ReadBytes('\n')
-		sqlString = sqlString[:len(sqlString)]
-
-		if err == io.EOF {
-			break
-		}
-
-		if len(sqlString) == 0 {
-			log.Println("Sql is empty. Skip!")
-			continue
-		}
-		_, err = db.Exec(string(sqlString))
-
-		if err != nil {
-			fmt.Println("Fail to execute query:", err.Error(), " ->", string(sqlString))
-			return err
-		}
-
-	}
-
-	err = updateWordPressConfigFile(c, docker, path)
-
-	if err != nil {
-		fmt.Println("ERROR: ", err.Error())
-		return err
+	errUpdateCfg := updateWordPressConfigFile(c, docker, path)
+	if errUpdateCfg != nil {
+		log.Println("ERROR: Fail to update config file:", errUpdateCfg.Error())
+		return errUpdateCfg
 	}
 
 	return nil
@@ -296,18 +257,11 @@ func updateWordPressConfigFile(c *connection, docker *DockerResponse, path strin
 
 	wpconfigPath := concat(path, "/wp-config.php")
 
-	wpconfExists, err := Exists(wpconfigPath)
-
-	if err != nil {
-		panic(err)
-		return err
-	}
-
-	if !wpconfExists {
+	if !Exists(wpconfigPath) {
 		return errors.New("wp-config.php file missing")
 	}
 
-	err = exec.Command("sed", "-i", "/DB_HOST/s/'[^']*'/'mysql'/2", wpconfigPath).Run()
+	err := exec.Command("sed", "-i", "/DB_HOST/s/'[^']*'/'mysql'/2", wpconfigPath).Run()
 	if err != nil {
 		return err
 	}
@@ -430,6 +384,7 @@ func finish(c *connection) *FinishResponse {
 	tempDir := getImportTempPath(c)
 	mountsDir := concat(config.Mounts, "/", instanceID)
 
+	log.Println("Removing ", mountsDir, "...")
 	if err := RemoveDirContents(mountsDir); err != nil {
 		if verbose {
 			log.Println("Remove docker generated WordPress files for", pURL)
@@ -439,6 +394,7 @@ func finish(c *connection) *FinishResponse {
 		return fin
 	}
 
+	log.Println("Copy from ", tempDir, "to", mountsDir, "...")
 	if errCopy := CopyDir(tempDir, mountsDir); errCopy != nil {
 		if verbose {
 			log.Println("Copy files from temp to mounts for", pURL)
@@ -510,13 +466,7 @@ func getImportTempPath(c *connection) string {
 	writePathBuffer.WriteString("/")
 	writePathBuffer.WriteString(host)
 
-	siteExist, err := Exists(writePathBuffer.String())
-
-	if err != nil {
-		panic(err)
-	}
-
-	if !siteExist {
+	if !Exists(writePathBuffer.String()) {
 		if verbose {
 			fmt.Println("Create directory: ", writePathBuffer.String())
 		}
@@ -538,13 +488,7 @@ func prepareFilePath(c *connection, file string) string {
 	filePath.WriteString("/")
 	filePath.WriteString(file)
 
-	fExists, err := Exists(path.Dir(filePath.String()))
-
-	if err != nil {
-		panic(err)
-	}
-
-	if !fExists {
+	if !Exists(path.Dir(filePath.String())) {
 		if verbose {
 			fmt.Println("Create directory: ", path.Dir(filePath.String()))
 		}
@@ -606,6 +550,18 @@ func concat(strs ...string) string {
 	var buffer bytes.Buffer
 	for _, str := range strs {
 		buffer.WriteString(str)
+	}
+	return buffer.String()
+}
+
+func concats(strs ...string) string {
+	var buffer bytes.Buffer
+	var size int = len(strs)
+	for i, str := range strs {
+		buffer.WriteString(str)
+		if i < size-1 {
+			buffer.WriteString(" ")
+		}
 	}
 	return buffer.String()
 }

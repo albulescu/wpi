@@ -314,13 +314,7 @@ func (c *connection) readPump() {
 
 			// -- CHECK IF FILE EXISTS TO SKIP IT -----
 
-			filePathExists, err := Exists(filePath)
-
-			if err != nil {
-				panic(err)
-			}
-
-			if filePathExists {
+			if Exists(filePath) {
 
 				filePathCrc, err := FileCrc(filePath)
 				if err != nil {
