@@ -327,7 +327,7 @@ class WPI
         $auth = "--opt -h $host -u $user";
 
         if( $pass != "" ) {
-            $auth .= "-p $pass";
+            $auth .= " -p$pass";
         }
 
         system("mysqldump $auth $dbname > " . $this->dbtempfile, $retval);
