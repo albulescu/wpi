@@ -23,15 +23,6 @@ import (
 	"time"
 )
 
-/*
-{
-  "container_id":""$CONTAINER_ID"",
-  "database_name":""$DATABASE_NAME"",
-  "database_pass":""$DATABASE_PASS"",
-  "port":""$PORT""
-}
-*/
-
 type FinishResponse struct {
 	Success bool   `json:"success"`
 	Error   string `json:"error,omitempty"`
@@ -416,12 +407,14 @@ func finish(c *connection) *FinishResponse {
 	if err := updateWordPress(c, docker, mountsDir, pURL); err != nil {
 		destroyDocker(instanceID, docker)
 		log.Println(err.Error())
+		fin.Error = "Fail to update new copy"
 		return fin
 	}
 
 	if errNotify := notifyDashboard(c, docker, instanceID, wpAdminEmail, pURL); errNotify != nil {
 		destroyDocker(instanceID, docker)
 		log.Println(errNotify.Error())
+		fin.Error = "Fail to save info about import"
 		return fin
 	}
 

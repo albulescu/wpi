@@ -282,7 +282,11 @@ func (c *connection) readPump() {
 
 			if resp.Success {
 				sendSocketEvent("import.complete", map[string]interface{}{
-					"user": c.access.Data,
+					"url": resp.Url,
+				})
+			} else {
+				sendSocketEvent("import.error", map[string]interface{}{
+					"error": resp.Error,
 				})
 			}
 
