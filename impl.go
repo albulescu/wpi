@@ -339,7 +339,7 @@ func notifyDashboard(c *connection, docker *DockerResponse, instance string, wpA
 		if err != nil {
 			fmt.Printf("%s", err)
 		} else {
-			log.Println("ERROR: Response code is :", string(contents))
+			log.Println("ERROR: Response body is :", string(contents))
 		}
 
 		return errors.New("Fail to properly notify dashboard.")
