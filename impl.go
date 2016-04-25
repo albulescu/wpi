@@ -285,7 +285,7 @@ func updateWordPressConfigFile(c *connection, docker *DockerResponse, path strin
 	return nil
 }
 
-func notifyDashboard(c *connection, docker *DockerResponse, instance string, wpAdminEmail string, pURL string) error {
+func notifyDashboard(c *connection, docker *DockerResponse, instance string, wpAdminEmail string, slug string) error {
 
 	wpTitle, err := c.get("name")
 
@@ -294,7 +294,7 @@ func notifyDashboard(c *connection, docker *DockerResponse, instance string, wpA
 	}
 
 	data := map[string]interface{}{
-		"domain":         pURL,
+		"slug":           slug,
 		"title":          wpTitle,
 		"adminEmail":     wpAdminEmail,
 		"container_id":   docker.ContainerID,
@@ -364,12 +364,15 @@ func finish(c *connection) *FinishResponse {
 		panic(err)
 	}
 
+	var subDomain string
+
 	host := getHostFromURL(c)
-	subDomain := strings.Replace(host, ".", "-", -1)
+	subDomain = strings.Replace(host, ".", "-", -1)
 	pURL := concat("http://", subDomain, ".wpide.net")
 
 	if host == "localhost" {
-		pURL = concat("http://", randomDomain(), ".wpide.net")
+		subDomain = randomDomain()
+		pURL = concat("http://", subDomain, ".wpide.net")
 	}
 
 	if verbose {
@@ -417,7 +420,7 @@ func finish(c *connection) *FinishResponse {
 		return fin
 	}
 
-	if errNotify := notifyDashboard(c, docker, instanceID, wpAdminEmail, pURL); errNotify != nil {
+	if errNotify := notifyDashboard(c, docker, instanceID, wpAdminEmail, subDomain); errNotify != nil {
 		destroyDocker(instanceID, docker)
 		log.Println(errNotify.Error())
 		fin.Error = "Fail to save info about import"
