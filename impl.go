@@ -297,6 +297,7 @@ func notifyDashboard(c *connection, docker *DockerResponse, instance string, wpA
 		"slug":           slug,
 		"title":          wpTitle,
 		"adminEmail":     wpAdminEmail,
+		"instance_id":    instance,
 		"container_id":   docker.ContainerID,
 		"database_name":  docker.DatabaseName,
 		"database_pass":  docker.DatabasePass,
