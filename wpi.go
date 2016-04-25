@@ -16,7 +16,7 @@ var VERSION string = "0.0.0"
 
 var DEBUG bool = false
 
-var verbose bool
+var verbose bool = true
 
 var MAX_INDEX_WORKERS int = 100
 
@@ -49,8 +49,6 @@ func main() {
 	}
 
 	var configFileFlag = flag.String("config", "/etc/wpi.conf", "Config file")
-
-	flag.BoolVar(&verbose, "verbose", false, "--verbose")
 
 	flag.Parse()
 
