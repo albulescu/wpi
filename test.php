@@ -6,7 +6,7 @@ error_reporting(E_ALL);
 require "wpi.php";
 
 $wpi = new WPI("localhost:9999", "/var/www/wp");
-$wpi->setToken("eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzY29wZSI6ImltcG9ydCIsImRhdGEiOiI0IiwiaWFwIjoxNDYxNTE4OTc1LCJleHAiOjE0NjE1MjI1NzV9.rHbfal-3nM5_M1zyPF8kzFN84BcGsVLL9aQI_DZuU9U");
+$wpi->setToken("eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzY29wZSI6ImltcG9ydCIsImRhdGEiOiI0IiwiaWFwIjoxNDYxNTcyNTA5LCJleHAiOjE0NjE1NzYxMDl9._5eusqy2m9qSn1_VEnqeqNyRyfx1_-swhYK1Aeb-uzE");
 $wpi->setVerbose(true);
 $start = microtime(true);
 $wpi->connect();

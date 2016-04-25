@@ -328,7 +328,9 @@ func (c *connection) readPump() {
 				}
 
 				if filePathCrc == cImportCRC {
-					log.Println("File already exist:", cImportFile)
+					if verbose {
+						log.Println("File already exist:", cImportFile)
+					}
 					c.conn.Write([]byte("2\n"))
 					cImportFile = ""
 					continue

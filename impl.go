@@ -172,7 +172,7 @@ func checkMysqlIsUp() {
 		panic(err)
 	}
 
-	dockerMysqlHost := strings.Trim(string(host), "\n")
+	dockerMysqlHost = strings.Trim(string(host), "\n")
 
 	log.Println("Set docker host to:", dockerMysqlHost)
 }
@@ -225,13 +225,17 @@ func updateWordPress(c *connection, docker *DockerResponse, path string, pURL st
 
 	checkMysqlIsUp()
 
-	impcmd := concats("mysql", "-h", "172.17.0.39", "-u", docker.DatabaseName, concat("-p", docker.DatabasePass), docker.DatabaseName, "<", sqlFile)
+	impcmd := concats("mysql", "-h", dockerMysqlHost, "-u", docker.DatabaseName, concat("-p", docker.DatabasePass), docker.DatabaseName, "<", sqlFile)
 
 	shfile := concat(path, "/db-import.sh")
 
 	if errWriteSh := ioutil.WriteFile(shfile, []byte(impcmd), 0755); errWriteSh != nil {
 		log.Println("Fail to write sh file")
 		return errWriteSh
+	}
+
+	if verbose {
+		log.Println("Execute: /bin/bash", shfile)
 	}
 
 	errImportSql := exec.Command("/bin/bash", shfile).Run()
@@ -306,7 +310,9 @@ func notifyDashboard(c *connection, docker *DockerResponse, instance string, wpA
 		return err
 	}
 
-	log.Println("Notify dashboard:", string(jsonStr))
+	log.Println("Notify https://api.wpide.net/v1/import...")
+	log.Println(" -> Send data: ", string(jsonStr))
+	log.Println(" -> Authorization: ", c.access.Token)
 
 	req, err := http.NewRequest("POST", "https://api.wpide.net/v1/import", bytes.NewBuffer(jsonStr))
 	req.Header.Set("Authorization", c.access.Token)
