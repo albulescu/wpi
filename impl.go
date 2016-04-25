@@ -245,6 +245,10 @@ func updateWordPress(c *connection, docker *DockerResponse, path string, pURL st
 		return errImportSql
 	}
 
+	if errRem := os.Remove(shfile); errRem != nil {
+		log.Println("Fail to remove db-import.sh")
+	}
+
 	errUpdateCfg := updateWordPressConfigFile(c, docker, path)
 	if errUpdateCfg != nil {
 		log.Println("ERROR: Fail to update config file:", errUpdateCfg.Error())
