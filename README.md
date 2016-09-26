@@ -1,6 +1,6 @@
 # WordPress Importer ( wpi )
 
-Import wordpress instances using a wordpress plugin.
+Import WordPress instances using a plugin to stream all files.
 
 ## Protocol flow
 
