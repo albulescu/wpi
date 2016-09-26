@@ -1,11 +1,13 @@
 # WordPress Importer ( wpi )
 
+Import wordpress instances using a wordpress plugin.
+
 ## Protocol flow
 
 ```
 # Authenticate
 
-> AUTH generated_token_from_ide\n
+> AUTH {TOKEN}\n
 < 0\n # auth ok
 < 1\n # auth failed
 
